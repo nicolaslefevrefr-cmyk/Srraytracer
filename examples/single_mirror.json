@@ -1,0 +1,75 @@
+{
+  "name": "Single flat mirror (coarse mode)",
+  "description": "Source -> flat mirror at 2° grazing incidence -> exit aperture. Exercises §6-§8 end to end without the multi-mirror degeneracies of the full fixture.",
+  "config": {
+    "linear_accuracy": 0.5,
+    "angular_accuracy": 0.00025,
+    "mode": "coarse"
+  },
+  "world_origin": [
+    0,
+    0,
+    0
+  ],
+  "components": [
+    {
+      "type": "Source",
+      "name": "Source",
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "size_x_min": -1,
+      "size_x_max": 1,
+      "size_y_min": -1,
+      "size_y_max": 1,
+      "div_a_min": -0.002,
+      "div_a_max": 0.002,
+      "div_b_min": -0.002,
+      "div_b_max": 0.002
+    },
+    {
+      "type": "Mirror",
+      "name": "M1",
+      "position": [
+        0,
+        0,
+        12000
+      ],
+      "azimuthal_angle": 0,
+      "nominal_pitch": 0.03490658503988659,
+      "mirrorType": "Flat",
+      "rotation_sequence": "Pitch->Roll->Yaw",
+      "length_min": -250,
+      "length_max": 250,
+      "x_motion_min": -5,
+      "x_motion_max": 5,
+      "y_motion_min": 0,
+      "y_motion_max": 0,
+      "z_motion_min": 0,
+      "z_motion_max": 0,
+      "pitch_min": -0.005,
+      "pitch_max": 0.005,
+      "roll_min": 0,
+      "roll_max": 0,
+      "yaw_min": 0,
+      "yaw_max": 0,
+      "x_rotation_arm": 0,
+      "z_rotation_arm": 0
+    },
+    {
+      "type": "Aperture",
+      "name": "Exit",
+      "position": [
+        500,
+        0,
+        22000
+      ],
+      "size_x_min": -10,
+      "size_x_max": 10,
+      "size_y_min": -10,
+      "size_y_max": 10
+    }
+  ]
+}

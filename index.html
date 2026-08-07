@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SR Envelope Raytracer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="rail"><div class="rail-ticks"></div></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">SR</span>
+    <div class="brand-text">
+      <h1>Envelope Raytracer</h1>
+      <p>browser-based synchrotron beamline phase-space tracer &mdash; §1&ndash;§10 port</p>
+    </div>
+  </div>
+
+  <div class="controls">
+    <label class="ctrl">
+      <span>Example</span>
+      <select id="exampleSelect">
+        <option value="">— load an example —</option>
+        <option value="simple_passthrough">Simple pass-through</option>
+        <option value="single_mirror">Single flat mirror</option>
+        <option value="worked_fixture">§14 worked fixture</option>
+      </select>
+    </label>
+    <label class="ctrl">
+      <span>Mode</span>
+      <select id="modeSelect">
+        <option value="coarse">coarse</option>
+        <option value="fine">fine</option>
+      </select>
+    </label>
+    <label class="ctrl narrow">
+      <span>linear_accuracy (mm)</span>
+      <input id="linearAccuracy" type="number" step="0.01" value="0.5">
+    </label>
+    <label class="ctrl narrow">
+      <span>angular_accuracy (rad)</span>
+      <input id="angularAccuracy" type="number" step="0.00001" value="0.00025">
+    </label>
+    <label class="ctrl narrow" title="Browser-safety clamp, not part of the spec — see About tab">
+      <span>max rays (perf cap)</span>
+      <input id="perfCap" type="number" step="500" value="3000">
+    </label>
+    <button id="btnRun" class="btn primary">Run raytrace</button>
+    <button id="btnLoad" class="btn">Load JSON</button>
+    <input id="fileInput" type="file" accept="application/json" style="display:none">
+    <button id="btnSave" class="btn">Save JSON</button>
+    <button id="btnTests" class="btn ghost">Run self-tests</button>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="panel panel-left">
+    <div class="panel-head">Beamline layout <span class="hint">(top-down, X vs Z)</span></div>
+    <canvas id="layoutCanvas" width="520" height="220"></canvas>
+
+    <div class="panel-head">Stages <span class="hint" id="stageCount"></span></div>
+    <div class="stage-table-wrap">
+      <table class="stage-table" id="stageTable">
+        <thead><tr><th>#</th><th>element</th><th>stage</th><th>travel (mm)</th><th>area X</th><th>area Y</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel panel-right">
+    <div class="panel-head">Envelope vs. accumulated travel</div>
+    <label class="inline-check"><input type="checkbox" id="showIntermediate"> show Intermediate stages</label>
+    <canvas id="envelopeCanvas" width="640" height="360"></canvas>
+
+    <div class="panel-head">Selected stage phase space <span class="hint" id="selectedStageLabel"></span></div>
+    <div class="phase-pair">
+      <div>
+        <div class="phase-label">poly_x (position mm vs slope mrad)</div>
+        <canvas id="phaseXCanvas" width="300" height="220"></canvas>
+      </div>
+      <div>
+        <div class="phase-label">poly_y (position mm vs slope mrad)</div>
+        <canvas id="phaseYCanvas" width="300" height="220"></canvas>
+      </div>
+    </div>
+  </section>
+</main>
+
+<section class="debug-panel" id="debugPanel">
+  <div class="debug-head" id="debugToggle">
+    <span class="chev">▸</span> Debug panel
+    <span class="debug-summary" id="debugSummary">not run yet</span>
+  </div>
+  <div class="debug-body" id="debugBody">
+    <div class="debug-tabs">
+      <button class="debug-tab active" data-tab="log">Evaluation log</button>
+      <button class="debug-tab" data-tab="warnings">Warnings</button>
+      <button class="debug-tab" data-tab="tests">Self-tests</button>
+      <button class="debug-tab" data-tab="about">Assumptions &amp; scope</button>
+    </div>
+    <div class="debug-content" id="debugLog"></div>
+    <div class="debug-content" id="debugWarnings" style="display:none"></div>
+    <div class="debug-content" id="debugTests" style="display:none"></div>
+    <div class="debug-content" id="debugAbout" style="display:none"></div>
+  </div>
+</section>
+
+<script src="js/geometry.js"></script>
+<script src="js/beamline.js"></script>
+<script src="js/phasespace.js"></script>
+<script src="js/raysample.js"></script>
+<script src="js/mirror.js"></script>
+<script src="js/convergence.js"></script>
+<script src="js/raytrace.js"></script>
+<script src="js/examples.js"></script>
+<script src="js/render.js"></script>
+<script src="js/tests.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

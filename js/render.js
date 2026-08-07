@@ -1,0 +1,194 @@
+// render.js — plain <canvas> 2D visualizations. No charting library dependency (documented
+// simplification vs. the build spec's §12 recommendation of Three.js/Chart.js — kept dependency
+// -free so the app runs with zero network access once loaded).
+(function (SR) {
+  'use strict';
+  const render = {};
+
+  function clear(ctx, canvas) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  function niceAxis(min, max, pad = 0.08) {
+    if (min === max) { min -= 1; max += 1; }
+    const span = max - min;
+    return [min - span * pad, max + span * pad];
+  }
+
+  // Top-down (X vs Z) layout of the beamline.
+  render.drawLayout = function (canvas, elements) {
+    const ctx = canvas.getContext('2d');
+    clear(ctx, canvas);
+    const W = canvas.width, H = canvas.height;
+    if (!elements || elements.length === 0) return;
+
+    const zs = elements.map((e) => e.position[2]);
+    const xs = elements.map((e) => e.position[0]);
+    const [zMin, zMax] = niceAxis(Math.min(...zs), Math.max(...zs), 0.1);
+    const [xMin, xMax] = niceAxis(Math.min(...xs, -50), Math.max(...xs, 50), 0.3);
+
+    const margin = 40;
+    const sx = (W - 2 * margin) / (zMax - zMin);
+    const sy = (H - 2 * margin) / (xMax - xMin);
+    const toPx = (z, x) => [margin + (z - zMin) * sx, H - margin - (x - xMin) * sy];
+
+    ctx.strokeStyle = '#c9d3dc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const [ox, oy] = toPx(zMin, 0);
+    ctx.moveTo(margin, oy); ctx.lineTo(W - margin, oy);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#6a8caf';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    elements.forEach((e, i) => {
+      const [px, py] = toPx(e.position[2], e.position[0]);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    elements.forEach((e) => {
+      const [px, py] = toPx(e.position[2], e.position[0]);
+      ctx.beginPath();
+      const color = e.type === 'Source' ? '#e07a3f' : e.type === 'Mirror' ? '#3f7ae0' : '#3fae5c';
+      ctx.fillStyle = color;
+      ctx.arc(px, py, e.type === 'Source' ? 5 : 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#22303c';
+      ctx.font = '11px "IBM Plex Mono", monospace';
+      ctx.fillText(e.name, px + 6, py - 6);
+    });
+
+    ctx.fillStyle = '#5a6b78';
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.fillText('Z (mm) →', W - margin - 55, H - margin + 22);
+    ctx.save();
+    ctx.translate(14, margin + 10);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('X (mm)', 0, 0);
+    ctx.restore();
+  };
+
+  // Envelope half-size vs accumulated travel, X and Y stacked (two panels in one canvas).
+  render.drawEnvelopePlot = function (canvas, stages, opts) {
+    const ctx = canvas.getContext('2d');
+    clear(ctx, canvas);
+    const W = canvas.width, H = canvas.height;
+    const includeIntermediate = opts && opts.includeIntermediate;
+    const filtered = stages.filter((s) => includeIntermediate || s.stage !== 'Intermediate');
+    if (filtered.length === 0) return;
+
+    const panelH = H / 2 - 20;
+    const margin = 46;
+
+    function panel(yOffset, label, extractFn, color) {
+      const travels = filtered.map((s) => s.accumulated_travel);
+      const vals = filtered.map((s) => extractFn(s));
+      const [tMin, tMax] = niceAxis(Math.min(...travels), Math.max(...travels), 0.03);
+      const allVals = vals.flat();
+      const [vMin, vMax] = niceAxis(Math.min(0, ...allVals), Math.max(0, ...allVals), 0.15);
+
+      const sx = (W - 2 * margin) / Math.max(tMax - tMin, 1e-9);
+      const sy = panelH / Math.max(vMax - vMin, 1e-9);
+      const toPx = (t, v) => [margin + (t - tMin) * sx, yOffset + panelH - (v - vMin) * sy];
+
+      ctx.strokeStyle = '#d7dee4';
+      ctx.strokeRect(margin, yOffset, W - 2 * margin, panelH);
+
+      // zero line
+      const [zx0, zy0] = toPx(tMin, 0);
+      ctx.strokeStyle = '#e3e8ec';
+      ctx.beginPath(); ctx.moveTo(margin, zy0); ctx.lineTo(W - margin, zy0); ctx.stroke();
+
+      ['max', 'min'].forEach((which, idx) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = idx === 0 ? 2 : 1.4;
+        ctx.beginPath();
+        filtered.forEach((s, i) => {
+          const v = extractFn(s)[which === 'max' ? 1 : 0];
+          const [px, py] = toPx(s.accumulated_travel, v);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+      });
+
+      filtered.forEach((s) => {
+        const [mn, mx] = extractFn(s);
+        const [px, pyMx] = toPx(s.accumulated_travel, mx);
+        const pyMn = toPx(s.accumulated_travel, mn)[1];
+        const isMirror = s.elementType === 'Mirror' && s.stage === 'After';
+        ctx.fillStyle = isMirror ? '#3f7ae0' : '#22303c';
+        ctx.beginPath(); ctx.arc(px, pyMx, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px, pyMn, 2.2, 0, Math.PI * 2); ctx.fill();
+      });
+
+      ctx.fillStyle = '#22303c';
+      ctx.font = 'bold 12px "IBM Plex Mono", monospace';
+      ctx.fillText(label, margin, yOffset - 6);
+    }
+
+    panel(0, 'Envelope X (mm) vs accumulated travel (mm)', (s) => {
+      const poly = s.phase_space_good.poly_x;
+      return poly.length ? SR.geo.posBounds(poly) : [0, 0];
+    }, '#3f7ae0');
+    panel(H / 2 + 20, 'Envelope Y (mm) vs accumulated travel (mm)', (s) => {
+      const poly = s.phase_space_good.poly_y;
+      return poly.length ? SR.geo.posBounds(poly) : [0, 0];
+    }, '#3fae5c');
+  };
+
+  // Single phase-space polygon (position mm vs slope mrad).
+  render.drawPhaseSpace = function (canvas, poly, colorFill, colorStroke) {
+    const ctx = canvas.getContext('2d');
+    clear(ctx, canvas);
+    const W = canvas.width, H = canvas.height;
+    if (!poly || poly.length === 0) {
+      ctx.fillStyle = '#94a3ad';
+      ctx.font = '12px "IBM Plex Mono", monospace';
+      ctx.fillText('(empty)', W / 2 - 20, H / 2);
+      return;
+    }
+    const margin = 36;
+    const ps = poly.map((v) => ({ p: v.p, s: v.s * 1000 })); // rad -> mrad
+    const [pMin, pMax] = niceAxis(Math.min(...ps.map((v) => v.p)), Math.max(...ps.map((v) => v.p)));
+    const [sMin, sMax] = niceAxis(Math.min(...ps.map((v) => v.s)), Math.max(...ps.map((v) => v.s)));
+    const sx = (W - 2 * margin) / Math.max(pMax - pMin, 1e-9);
+    const sy = (H - 2 * margin) / Math.max(sMax - sMin, 1e-9);
+    const toPx = (v) => [margin + (v.p - pMin) * sx, H - margin - (v.s - sMin) * sy];
+
+    ctx.strokeStyle = '#d7dee4';
+    ctx.strokeRect(margin, margin, W - 2 * margin, H - 2 * margin);
+
+    ctx.beginPath();
+    ps.forEach((v, i) => {
+      const [px, py] = toPx(v);
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    if (ps.length > 2) ctx.closePath();
+    ctx.fillStyle = colorFill || 'rgba(63,122,224,0.18)';
+    ctx.strokeStyle = colorStroke || '#3f7ae0';
+    ctx.lineWidth = 1.6;
+    if (ps.length > 2) ctx.fill();
+    ctx.stroke();
+    ps.forEach((v) => {
+      const [px, py] = toPx(v);
+      ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = colorStroke || '#3f7ae0'; ctx.fill();
+    });
+
+    ctx.fillStyle = '#5a6b78';
+    ctx.font = '10px "IBM Plex Mono", monospace';
+    ctx.fillText('position (mm)', W - margin - 70, H - margin + 20);
+    ctx.save();
+    ctx.translate(12, margin + 4);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('slope (mrad)', 0, 0);
+    ctx.restore();
+  };
+
+  SR.render = render;
+})(window.SR = window.SR || {});
