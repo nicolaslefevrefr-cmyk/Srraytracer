@@ -158,6 +158,29 @@
       assert(Math.abs(base.x - moved.x) > 1e-6, '§8 A4: x_motion measurably changes output position (not inert)');
     })();
 
+    // --- §8 reflection: re-referencing to mirror center + outgoing-frame reorientation (§17
+    // fixes) — pins near-perfect position preservation for a zero-motion, non-oblique (az=0)
+    // mirror, matching the zero-motion reference run in ASSUMPTIONS.md §17.
+    (function () {
+      const mirrorDef = { name: 'M', azimuthal_angle: 0, nominal_pitch: 1.5 * Math.PI / 180, length_min: -250, length_max: 250, rotation_sequence: 'Pitch->Roll->Yaw', x_rotation_arm: 0, z_rotation_arm: 0 };
+      // Reconstruct "Before M101" exactly as raytrace.js would (source -> shear -> AP101 clip -> shear).
+      const source = { size_x_min: -1, size_x_max: 1, size_y_min: -1, size_y_max: 1, div_a_min: -0.002, div_a_max: 0.002, div_b_min: -0.002, div_b_max: 0.002 };
+      let phaseSpace = SR.ps.radiate(source);
+      phaseSpace = { poly_x: geo.shearPoly(phaseSpace.poly_x, 11857.055), poly_y: geo.shearPoly(phaseSpace.poly_y, 11857.055) };
+      const ap101 = { name: 'AP101', size_x_min: -5, size_x_max: 5, size_y_min: -5, size_y_max: 5, misalignment_tolerances: SR.bl.defaultMisalignment() };
+      phaseSpace = SR.ps.cut(phaseSpace, ap101, null);
+      phaseSpace = { poly_x: geo.shearPoly(phaseSpace.poly_x, 100), poly_y: geo.shearPoly(phaseSpace.poly_y, 100) };
+
+      const rays = SR.rs.sampleRaysFromPhaseSpace(2000, phaseSpace, mirrorDef.length_min, null);
+      const { good } = SR.mirror.reflectRays(rays, mirrorDef, { x: 0, y: 0, z: 0, pitch: 0, roll: 0, yaw: 0 }, null);
+      const hull = SR.ps.hullFromRays(good, null);
+      const R = SR.mirror.outgoingReorientation(mirrorDef);
+      const reoriented = SR.ps.reorient(hull, R, null);
+      const [xmn, xmx] = geo.posBounds(reoriented.poly_x);
+      approx(xmx, 5.050736729249766, 0.01, '§17: zero-motion az=0 mirror preserves X envelope to <0.01mm (reference: 5.0507)');
+      approx(xmn, -5.050468847028225, 0.01, '§17: zero-motion az=0 mirror preserves X envelope to <0.01mm (reference: -5.0505)');
+    })();
+
     // --- End-to-end smoke tests (must not throw) ---
     ['simple_passthrough', 'single_mirror', 'worked_fixture', 'csv_validation'].forEach((key) => {
       try {

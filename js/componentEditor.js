@@ -100,10 +100,12 @@
     scale = scale || 1;
     const wrap = el('div', 'ce-minmax');
     wrap.appendChild(el('span', 'ce-minmax-label', labelText));
+    const inputs = el('div', 'ce-minmax-inputs');
     const mn = numInput(pair[0] * scale, (v) => onSet(0, v / scale), step);
     const mx = numInput(pair[1] * scale, (v) => onSet(1, v / scale), step);
-    wrap.appendChild(el('span', null, 'min')); wrap.appendChild(mn);
-    wrap.appendChild(el('span', null, 'max')); wrap.appendChild(mx);
+    inputs.appendChild(el('span', null, 'min')); inputs.appendChild(mn);
+    inputs.appendChild(el('span', null, 'max')); inputs.appendChild(mx);
+    wrap.appendChild(inputs);
     return wrap;
   }
   function positionFields(comp) {

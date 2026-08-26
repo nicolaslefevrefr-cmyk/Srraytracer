@@ -110,6 +110,22 @@
     return { t, point: geo.v3(x_local, y_local, 0), normal: geo.v3(0, 0, 1) };
   }
 
+  // Re-reference a reflected ray to the mirror's nominal center (local y=0) by propagating it
+  // along its OWN new (post-reflection) direction until it crosses y_local=0, and report the
+  // ray at that point instead of at its raw, per-ray intersection point. Necessary because
+  // different sampled rays strike a real mirror at genuinely different points along its finite
+  // length (different y_local); reporting each one's raw hit position mixes points that aren't
+  // at a common reference plane, which inflates the apparent envelope spread. Confirmed against
+  // a zero-motion reference run (ASSUMPTIONS.md §16): without this step a single-ray hand trace
+  // showed ~2% spurious distortion even at zero motion; with it, the same ray reconstructs its
+  // input position to 4+ significant figures, matching the reference tool's near-perfect
+  // preservation for a flat mirror at zero motion.
+  function reReferenceToCenter(point, dirOutLocal) {
+    if (Math.abs(dirOutLocal.y) < 1e-15) return point; // direction runs parallel to the mirror's length axis; nothing to do
+    const s = -point.y / dirOutLocal.y;
+    return geo.v3(point.x + s * dirOutLocal.x, 0, point.z + s * dirOutLocal.z);
+  }
+
   // §8.7 Paraboloid (cylindrical) — SKETCH ONLY, not validated against xrt. Root-finds via
   // Newton's method starting from the flat-plane closed-form guess, using the toy equation
   // z = x^2/(4f) given in the spec. `p`,`q` combine via the standard mirror equation 1/f =
@@ -181,14 +197,42 @@
       else hit = intersectParaboloidSketch(Plocal, Dlocal, mirrorDef, log);
 
       const Dout_local = reflect(Dlocal, hit.normal);
-      const Pstage = toStage(T, hit.point);
+      // classify good/over using the TRUE hit point (the mirror's actual finite extent),
+      // before re-referencing to the nominal center for reporting.
+      const yGood = hit.point.y >= mirrorDef.length_min && hit.point.y <= mirrorDef.length_max;
+      const reportPoint = type === 'Flat' ? reReferenceToCenter(hit.point, Dout_local) : hit.point;
+      const Pstage = toStage(T, reportPoint);
       const Dstage = toStageDir(T, Dout_local);
 
       const outRay = { x: Pstage.x, y: Pstage.y, a: Dstage.x, b: Dstage.y, c: Dstage.z };
-      const yGood = hit.point.y >= mirrorDef.length_min && hit.point.y <= mirrorDef.length_max;
       if (yGood) good.push(outRay); else over.push(outRay);
     }
     return { good, over };
+  };
+
+  // Reorientation matrix for continuing propagation after this mirror: transforms a ray's
+  // (position, direction), reported in the OLD (incoming) frame by reflectRays, into the NEW
+  // frame whose Z-axis is the chief (zero-slope) ray's outgoing direction — i.e. the frame
+  // subsequent free-travel shears need to be expressed in, matching how §2's bisector frame
+  // reorients at a bend. Necessary because reflectRays reports every ray in the *incoming*
+  // frame's basis; propagating that raw output forward with §3's shear (which assumes position/
+  // slope are already relative to the *current* propagation axis) reproduces the old, pre-bend
+  // axis instead of following the beam — confirmed against a zero-motion reference run
+  // (ASSUMPTIONS.md §16): without this step, position downstream of a mirror was off by ~100mm+
+  // (the deflection accumulated over distance, applied to the wrong reference axis); with it,
+  // downstream stages matched the reference closely.
+  //
+  // M = Rtotal · Reflect · Rtotal^T is the (nominal, zero-motion) direction transform reflectRays
+  // implicitly applies to every ray's direction; M^T undoes it, so a ray traveling exactly along
+  // the chief/nominal direction reports slope (0,0) afterward — i.e. M^T*(chief ray's own output)
+  // reconstructs (0,0,1) exactly, by construction (M is orthogonal). Using the mirror's own
+  // R_total (nominal motion) keeps this self-consistent with whatever convention buildRnom uses,
+  // rather than re-deriving it from §2's independently-parameterized rotation.
+  mirror.outgoingReorientation = function (mirrorDef) {
+    const T = mirror.buildTransform(mirrorDef, { x: 0, y: 0, z: 0, pitch: 0, roll: 0, yaw: 0 });
+    const Reflect = [[1, 0, 0], [0, 1, 0], [0, 0, -1]];
+    const M = geo.matMul(geo.matMul(T.Rtotal, Reflect), geo.matTranspose(T.Rtotal));
+    return geo.matTranspose(M); // M^T
   };
 
   SR.mirror = mirror;

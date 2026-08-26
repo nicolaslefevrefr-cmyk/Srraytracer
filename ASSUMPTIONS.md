@@ -118,6 +118,62 @@ bundled with the app reproduces this exact beamline so either side of that compa
 inspectable — load it, run it, and compare its stage table to the reference numbers in this
 section.
 
+## §17: the zero-motion reference run — two more real bugs found and fixed
+
+The person then provided exactly that: a zero-motion run (both M101's and M102's motion bounds
+pinned to 0) with its own reference CSV. This isolated the pure geometric reflection from the
+optimizer entirely, and immediately found two more real bugs — both now fixed.
+
+**Bug 1 — missing re-reference to the mirror's center.** A hand-traced single ray at zero motion
+showed a ~2% position distortion even with no search involved (reference: near-perfect identity,
+`Before M101`≈`After M101` to 5+ significant figures; this port: a real ~0.1–0.35mm deviation per
+ray). Tracing the exact arithmetic (not an approximation) showed each ray reflects correctly, but
+different rays in the same bundle strike the finite mirror surface at genuinely different points
+along its length — and reporting each ray's raw hit position, without first re-referencing every
+ray to a common plane (the mirror's own center, local y=0), mixes positions that were never
+directly comparable. Fixed in `mirror.js`: `reReferenceToCenter()` propagates each reflected ray
+along its own new direction until it crosses the mirror's local y=0, and *that* point is reported
+instead of the raw intersection — using the true intersection only for the good/spillover length
+check. This alone brought `After M101` to within 0.0001mm of the reference.
+
+**Bug 2 — no reorientation into the outgoing beam's frame.** Even with bug 1 fixed, everything
+downstream of M101 (`Before Entrance Slit` onward) was off by ~131mm in X — suspiciously close to
+`2500mm × tan(3°)`, the lateral shift M101's 3° deflection accumulates over the distance to the
+next element. The reflected phase space was being reported correctly in the *incoming* beam's
+frame, then handed to §3's shear (which assumes position/slope are already relative to whatever
+axis it's about to propagate along) — so the deflection was being counted twice: once as a real
+physical shift, and again because downstream elements' declared positions are already placed along
+the deflected path, but the phase space itself was still speaking the old frame's language.
+Fixed: `mirror.outgoingReorientation(mirrorDef)` computes M = R_total · Reflect · R_total^T (the
+direction transform reflection applies at nominal, zero-motion orientation) and returns M^T; by
+construction M^T applied to the chief (zero-slope) ray's own output reconstructs exactly (0,0,1)
+— i.e. it defines the new frame's Z-axis as the chief ray's actual outgoing direction. `raytrace.js`
+now applies this to the mirror's output phase space (via `ps.reorient`, sampling the corner
+cross-product — exact for a linear map — and re-hulling) before continuing propagation. This
+brought `Before Entrance Slit` and `Before M102` to within 0.007mm of the reference (down from
+~131mm), and fixed the `single_mirror` example's previously-zero final aperture stage as a side
+effect.
+
+**What's now confirmed correct, end to end:** for M101 (azimuth 0, a "planar"/non-oblique mirror),
+every stage from Source through Before-M102 matches the reference closely: position bounds land
+within about 0.007mm on `After M101` itself (down from a ~0.1mm, ~2% error before the
+re-referencing fix, and from a ~131mm error before the reorientation fix), and that same ~0.007mm
+gap simply carries forward unchanged through `Before Entrance Slit`/`Before M102` (shear is exact,
+so it doesn't add error). That residual ~0.007mm is small enough to be a remaining
+approximation/rounding-level difference rather than a structural one, but it's reported precisely
+rather than rounded away to "matches."
+
+**What still doesn't match:** `After M102` — M102 is a strongly oblique mirror (auto-corrected
+azimuth 29.85° vs M101's 0°, meaning X and Y genuinely mix under its reflection, unlike M101's
+case). The reorientation's own self-consistency check still holds exactly (M102's chief ray
+reorients to exactly (0,0,1), confirmed numerically). But the resulting envelope only partially
+matches: Y comes out close (±10.01/10.14 vs reference ±10.19/10.04), while X comes out roughly 2×
+too wide (±11.5/12.1 vs reference ±5.71/5.76), and this gap does **not** shrink with more rays
+(tested up to 50,000, ruling out a sampling-density artifact — it's structural). This is reported
+precisely rather than glossed over: the fix that fully resolved the non-oblique case (M101) is only
+partially sufficient for the oblique case (M102), and the remaining gap is specific to how X and Y
+couple when both azimuth and pitch are simultaneously significant. Not resolved in this pass.
+
 
 ## §8.7: non-flat mirrors
 

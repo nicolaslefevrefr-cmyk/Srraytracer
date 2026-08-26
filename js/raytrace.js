@@ -83,11 +83,20 @@
         result.warnings.forEach((w) => { warnings.push(w); logFn('WARNING: ' + w); });
 
         phaseSpace = result.phase_space_good;
-        const hasOver = (result.phase_space_over.poly_x.length > 0 || result.phase_space_over.poly_y.length > 0);
+        let phaseSpaceOver = result.phase_space_over;
+        if (mirrorDef.mirrorType === 'Flat' || !mirrorDef.mirrorType) {
+          const R = SR.mirror.outgoingReorientation(mirrorDef);
+          logFn(`Mirror "${mirrorDef.name}": reorienting downstream phase space into the outgoing-beam frame`);
+          phaseSpace = ps.reorient(phaseSpace, R, logFn);
+          if (phaseSpaceOver.poly_x.length > 0 || phaseSpaceOver.poly_y.length > 0) {
+            phaseSpaceOver = ps.reorient(phaseSpaceOver, R, logFn);
+          }
+        }
+        const hasOver = (phaseSpaceOver.poly_x.length > 0 || phaseSpaceOver.poly_y.length > 0);
         stages.push({
           element: curr.name, elementType: 'Mirror', stage: 'After',
           position: curr.position.slice(), travel_distance: 0, accumulated_travel: accumulatedTravel,
-          phase_space_good: phaseSpace, phase_space_over: hasOver ? result.phase_space_over : null,
+          phase_space_good: phaseSpace, phase_space_over: hasOver ? phaseSpaceOver : null,
           numRays: result.numRays,
         });
       } else {

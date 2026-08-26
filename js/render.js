@@ -109,9 +109,10 @@
 
     function panel(yOffset, label, extractFn, color) {
       const travels = filtered.map((s) => s.accumulated_travel);
-      const vals = filtered.map((s) => extractFn(s));
+      const vals = filtered.map((s) => extractFn(s.phase_space_good));
+      const overVals = filtered.filter((s) => s.phase_space_over).map((s) => extractFn(s.phase_space_over));
       const [tMin, tMax] = niceAxis(Math.min(...travels), Math.max(...travels), 0.03);
-      const allVals = vals.flat();
+      const allVals = vals.flat().concat(overVals.flat());
       const [vMin, vMax] = niceAxis(Math.min(0, ...allVals), Math.max(0, ...allVals), 0.15);
 
       const sx = (W - 2 * margin) / Math.max(tMax - tMin, 1e-9);
@@ -126,12 +127,28 @@
       ctx.strokeStyle = '#e3e8ec';
       ctx.beginPath(); ctx.moveTo(margin, zy0); ctx.lineTo(W - margin, zy0); ctx.stroke();
 
+      // Spillover ("over") rays: sparse (only at mirrors that produced them), so drawn as
+      // individual amber whiskers rather than a connected line — there's nothing meaningful to
+      // interpolate between two mirrors' spillover values.
+      filtered.forEach((s) => {
+        if (!s.phase_space_over) return;
+        const [omn, omx] = extractFn(s.phase_space_over);
+        const [px, pyMx] = toPx(s.accumulated_travel, omx);
+        const pyMn = toPx(s.accumulated_travel, omn)[1];
+        ctx.strokeStyle = '#e0b23f';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(px, pyMx); ctx.lineTo(px, pyMn); ctx.stroke();
+        ctx.fillStyle = '#e0b23f';
+        ctx.beginPath(); ctx.arc(px, pyMx, 2.6, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(px, pyMn, 2.6, 0, Math.PI * 2); ctx.fill();
+      });
+
       ['max', 'min'].forEach((which, idx) => {
         ctx.strokeStyle = color;
         ctx.lineWidth = idx === 0 ? 2 : 1.4;
         ctx.beginPath();
         filtered.forEach((s, i) => {
-          const v = extractFn(s)[which === 'max' ? 1 : 0];
+          const v = extractFn(s.phase_space_good)[which === 'max' ? 1 : 0];
           const [px, py] = toPx(s.accumulated_travel, v);
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         });
@@ -139,7 +156,7 @@
       });
 
       filtered.forEach((s) => {
-        const [mn, mx] = extractFn(s);
+        const [mn, mx] = extractFn(s.phase_space_good);
         const [px, pyMx] = toPx(s.accumulated_travel, mx);
         const pyMn = toPx(s.accumulated_travel, mn)[1];
         const isMirror = s.elementType === 'Mirror' && s.stage === 'After';
@@ -163,13 +180,13 @@
       ctx.fillText(label, margin, yOffset - 6);
     }
 
-    panel(0, 'Envelope X (mm) vs accumulated travel (mm)', (s) => {
-      const poly = s.phase_space_good.poly_x;
-      return poly.length ? SR.geo.posBounds(poly) : [0, 0];
+    panel(0, 'Envelope X (mm) vs accumulated travel (mm)', (phaseSpace) => {
+      const poly = phaseSpace && phaseSpace.poly_x;
+      return poly && poly.length ? SR.geo.posBounds(poly) : [0, 0];
     }, '#3f7ae0');
-    panel(H / 2 + 20, 'Envelope Y (mm) vs accumulated travel (mm)', (s) => {
-      const poly = s.phase_space_good.poly_y;
-      return poly.length ? SR.geo.posBounds(poly) : [0, 0];
+    panel(H / 2 + 20, 'Envelope Y (mm) vs accumulated travel (mm)', (phaseSpace) => {
+      const poly = phaseSpace && phaseSpace.poly_y;
+      return poly && poly.length ? SR.geo.posBounds(poly) : [0, 0];
     }, '#3fae5c');
   };
 

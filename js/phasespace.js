@@ -71,5 +71,25 @@
     return h.poly;
   };
 
+  // Reorient a phase space into a new frame via a 3x3 rotation matrix R (v_new = R * v_old),
+  // by sampling the full corner cross-product (exact for a linear map — extremes of a linear
+  // functional over a convex polygon occur at its vertices) and re-hulling. Position vectors are
+  // treated as (x, y, 0) — the phase space only ever tracks a transverse plane, never a depth —
+  // and direction vectors come from the usual slope -> direction-cosine conversion.
+  ps.reorient = function (phaseSpace, R, log) {
+    const rays = [];
+    for (const vx of phaseSpace.poly_x) {
+      for (const vy of phaseSpace.poly_y) {
+        const denom = Math.sqrt(1 + vx.s * vx.s + vy.s * vy.s);
+        const Pold = geo.v3(vx.p, vy.p, 0);
+        const Dold = geo.v3(vx.s / denom, vy.s / denom, 1 / denom);
+        const Pnew = geo.matMulVec(R, Pold);
+        const Dnew = geo.matMulVec(R, Dold);
+        rays.push({ x: Pnew.x, y: Pnew.y, a: Dnew.x, b: Dnew.y, c: Dnew.z });
+      }
+    }
+    return ps.hullFromRays(rays, log);
+  };
+
   SR.ps = ps;
 })(window.SR = window.SR || {});
