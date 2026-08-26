@@ -5,7 +5,7 @@
   const state = {
     beamline: null,
     result: null,      // {stages, warnings, elements}
-    selectedStage: 0,
+    selection: { mode: 'stage', stageIndex: 0 }, // or {mode:'travel', travel: mm}
     logLines: [],
   };
 
@@ -42,16 +42,28 @@
     }
     clearLog();
     log(`Loaded beamline "${bl.name || sourceLabel || '(unnamed)'}" with ${bl.components.length} raw component(s).`);
+    SR.componentEditor.resetExpanded();
+    renderComponentEditor();
+    refreshLayoutPreview();
+    $('stageCount').textContent = '';
+    $('stageTable').querySelector('tbody').innerHTML = '';
+    state.result = null;
+    openDebugPanel();
+  }
+
+  function refreshLayoutPreview() {
     try {
-      const elements = SR.bl.resolveBeamline(bl.components, log);
+      const elements = SR.bl.resolveBeamline(state.beamline.components, log);
       SR.render.drawLayout($('layoutCanvas'), elements);
-      $('stageCount').textContent = '';
-      $('stageTable').querySelector('tbody').innerHTML = '';
-      state.result = null;
     } catch (e) {
       log('ERROR resolving beamline: ' + e.message);
     }
-    openDebugPanel();
+  }
+
+  function renderComponentEditor() {
+    SR.componentEditor.render($('componentList'), state.beamline, () => {
+      refreshLayoutPreview();
+    });
   }
 
   // ---------- Run ----------
@@ -81,7 +93,7 @@
         const dt = (performance.now() - t0).toFixed(0);
         log(`Done in ${dt}ms. ${result.stages.length} stages, ${result.warnings.length} warning(s).`);
         state.result = result;
-        state.selectedStage = result.stages.length - 1;
+        state.selection = { mode: 'stage', stageIndex: result.stages.length - 1 };
         renderResult();
         setDebugSummary(`${result.stages.length} stages · ${result.warnings.length} warning(s) · ${dt}ms`);
       } catch (e) {
@@ -115,6 +127,30 @@
     return poly && poly.length ? SR.geo.polygonArea(poly).toExponential(2) : '0';
   }
 
+  // Resolve the current selection into the phase space + a label to display. Table-row
+  // selections show the exact stage; envelope-plot clicks show an analytically-sheared snapshot
+  // at the clicked travel (exact — shear is linear — see SR.rt.phaseSpaceAtTravel).
+  function resolveSelection() {
+    const { stages } = state.result;
+    if (state.selection.mode === 'stage') {
+      const s = stages[state.selection.stageIndex];
+      return {
+        phase_space: s.phase_space_good, phase_space_over: s.phase_space_over,
+        travel: s.accumulated_travel,
+        label: `#${state.selection.stageIndex}: ${s.element} / ${s.stage} (travel ${s.accumulated_travel.toFixed(1)} mm)`,
+      };
+    }
+    const r = SR.rt.phaseSpaceAtTravel(stages, state.selection.travel);
+    const exact = Math.abs(r.deltaTravel) < 1e-6;
+    return {
+      phase_space: r.phase_space, phase_space_over: null,
+      travel: state.selection.travel,
+      label: exact
+        ? `${r.sourceStage.element} / ${r.sourceStage.stage} (travel ${r.sourceStage.accumulated_travel.toFixed(1)} mm)`
+        : `interpolated at travel ${state.selection.travel.toFixed(1)} mm (${r.deltaTravel.toFixed(1)} mm past ${r.sourceStage.element}/${r.sourceStage.stage}, free propagation — exact via §3 shear)`,
+    };
+  }
+
   function renderResult() {
     const { stages, elements } = state.result;
     SR.render.drawLayout($('layoutCanvas'), elements);
@@ -124,30 +160,26 @@
     tbody.innerHTML = '';
     stages.forEach((s, i) => {
       const tr = document.createElement('tr');
-      if (i === state.selectedStage) tr.classList.add('selected');
+      if (state.selection.mode === 'stage' && i === state.selection.stageIndex) tr.classList.add('selected');
       const tagClass = s.elementType === 'Mirror' ? 'mirror' : s.elementType === 'Aperture' ? 'aperture' : 'source';
       tr.innerHTML = `<td>${i}</td><td>${s.element}</td>` +
         `<td><span class="tag ${tagClass}">${s.stage}</span></td>` +
         `<td>${s.accumulated_travel.toFixed(1)}</td>` +
         `<td>${areaStr(s.phase_space_good.poly_x)}</td>` +
         `<td>${areaStr(s.phase_space_good.poly_y)}</td>`;
-      tr.addEventListener('click', () => { state.selectedStage = i; renderResult(); });
+      tr.addEventListener('click', () => { state.selection = { mode: 'stage', stageIndex: i }; renderResult(); });
       tbody.appendChild(tr);
     });
 
-    const showIntermediate = $('showIntermediate').checked;
-    SR.render.drawEnvelopePlot($('envelopeCanvas'), stages, { includeIntermediate: showIntermediate });
+    const current = resolveSelection();
+    SR.render.drawEnvelopePlot($('envelopeCanvas'), stages, { selectedTravel: current.travel });
 
-    const sel = stages[state.selectedStage];
-    if (sel) {
-      $('selectedStageLabel').textContent = `— #${state.selectedStage}: ${sel.element} / ${sel.stage} (accumulated travel ${sel.accumulated_travel.toFixed(1)} mm)`;
-      SR.render.drawPhaseSpace($('phaseXCanvas'), sel.phase_space_good.poly_x, 'rgba(63,122,224,0.18)', '#3f7ae0');
-      SR.render.drawPhaseSpace($('phaseYCanvas'), sel.phase_space_good.poly_y, 'rgba(63,174,92,0.18)', '#3fae5c');
-      if (sel.phase_space_over) {
-        // overlay spillover polygon by drawing it a second time with amber, on top
-        overlaySpillover($('phaseXCanvas'), sel.phase_space_over.poly_x);
-        overlaySpillover($('phaseYCanvas'), sel.phase_space_over.poly_y);
-      }
+    $('selectedStageLabel').textContent = `— ${current.label}`;
+    SR.render.drawPhaseSpace($('phaseXCanvas'), current.phase_space.poly_x, 'rgba(63,122,224,0.18)', '#3f7ae0');
+    SR.render.drawPhaseSpace($('phaseYCanvas'), current.phase_space.poly_y, 'rgba(63,174,92,0.18)', '#3fae5c');
+    if (current.phase_space_over) {
+      overlaySpillover($('phaseXCanvas'), current.phase_space_over.poly_x);
+      overlaySpillover($('phaseYCanvas'), current.phase_space_over.poly_y);
     }
   }
 
@@ -160,6 +192,21 @@
     ctx.fillStyle = '#e07a3f';
     ctx.font = 'bold 10px "IBM Plex Mono", monospace';
     ctx.fillText('⚠ spillover rays present (see Warnings tab)', 8, 14);
+  }
+
+  // Envelope-plot click -> travel (mm), corrected for CSS scaling of the canvas.
+  function wireEnvelopeClick() {
+    $('envelopeCanvas').addEventListener('click', (ev) => {
+      if (!state.result) return;
+      const canvas = $('envelopeCanvas');
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const pixelX = (ev.clientX - rect.left) * scaleX;
+      const travel = SR.render.travelFromPixel(canvas, state.result.stages, pixelX);
+      if (travel == null) return;
+      state.selection = { mode: 'travel', travel };
+      renderResult();
+    });
   }
 
   // ---------- Debug tabs ----------
@@ -274,7 +321,25 @@ fixture's M102/G101/M103) — it does not confirm numerical agreement with the o
     $('btnRun').addEventListener('click', runRaytrace);
     $('btnSave').addEventListener('click', saveJSON);
     $('btnTests').addEventListener('click', runSelfTests);
-    $('showIntermediate').addEventListener('change', () => { if (state.result) renderResult(); });
+    wireEnvelopeClick();
+
+    $('btnNew').addEventListener('click', () => {
+      if (state.beamline && !confirm('Start a new beamline? Unsaved changes will be lost (use Save JSON first if you want to keep them).')) return;
+      $('exampleSelect').value = '';
+      loadBeamline(SR.componentEditor.newBeamline(), 'new');
+      SR.componentEditor.resetExpanded();
+      // expand the Source by default so it's obviously editable
+      const list = $('componentList');
+      const firstChev = list.querySelector('.ce-chev');
+      if (firstChev) firstChev.click();
+    });
+
+    $('btnAddComponent').addEventListener('click', () => {
+      if (!state.beamline) { alert('Load or create a beamline first.'); return; }
+      SR.componentEditor.addComponent(state.beamline, $('addTypeSelect').value);
+      renderComponentEditor();
+      refreshLayoutPreview();
+    });
 
     // default: load the single-mirror example so the app isn't blank on first paint
     $('exampleSelect').value = 'single_mirror';

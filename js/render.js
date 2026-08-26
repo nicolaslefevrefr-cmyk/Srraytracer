@@ -73,17 +73,39 @@
     ctx.restore();
   };
 
+  // Shared travel-axis mapping so click handling (travelFromPixel) always agrees exactly with
+  // what drawEnvelopePlot rendered — both derive tMin/tMax/margin the same way from the same
+  // stage list.
+  const ENVELOPE_MARGIN = 46;
+  function travelAxis(stages) {
+    const travels = stages.map((s) => s.accumulated_travel);
+    return niceAxis(Math.min(...travels), Math.max(...travels), 0.03);
+  }
+
+  // Inverse of the pixel<->travel mapping used inside drawEnvelopePlot, so a click on the canvas
+  // can be turned back into a travel (mm) value. `pixelX` is in the canvas's own coordinate space
+  // (i.e. already corrected for CSS scaling — see ui.js's click handler).
+  render.travelFromPixel = function (canvas, stages, pixelX) {
+    if (!stages || stages.length === 0) return null;
+    const [tMin, tMax] = travelAxis(stages);
+    const W = canvas.width;
+    const sx = (W - 2 * ENVELOPE_MARGIN) / Math.max(tMax - tMin, 1e-9);
+    const t = tMin + (pixelX - ENVELOPE_MARGIN) / sx;
+    return Math.max(stages[0].accumulated_travel, Math.min(stages[stages.length - 1].accumulated_travel, t));
+  };
+
   // Envelope half-size vs accumulated travel, X and Y stacked (two panels in one canvas).
+  // `selectedTravel` (optional, mm) draws a vertical marker line at that Z on both panels.
   render.drawEnvelopePlot = function (canvas, stages, opts) {
     const ctx = canvas.getContext('2d');
     clear(ctx, canvas);
     const W = canvas.width, H = canvas.height;
-    const includeIntermediate = opts && opts.includeIntermediate;
-    const filtered = stages.filter((s) => includeIntermediate || s.stage !== 'Intermediate');
+    const filtered = stages;
     if (filtered.length === 0) return;
+    const selectedTravel = opts && opts.selectedTravel;
 
     const panelH = H / 2 - 20;
-    const margin = 46;
+    const margin = ENVELOPE_MARGIN;
 
     function panel(yOffset, label, extractFn, color) {
       const travels = filtered.map((s) => s.accumulated_travel);
@@ -125,6 +147,16 @@
         ctx.beginPath(); ctx.arc(px, pyMx, 2.2, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(px, pyMn, 2.2, 0, Math.PI * 2); ctx.fill();
       });
+
+      if (selectedTravel != null && selectedTravel >= tMin && selectedTravel <= tMax) {
+        const [mx, my0] = toPx(selectedTravel, vMin);
+        const my1 = toPx(selectedTravel, vMax)[1];
+        ctx.strokeStyle = '#e07a3f';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(mx, my0); ctx.lineTo(mx, my1); ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       ctx.fillStyle = '#22303c';
       ctx.font = 'bold 12px "IBM Plex Mono", monospace';

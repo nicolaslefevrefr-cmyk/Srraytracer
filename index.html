@@ -29,6 +29,7 @@
         <option value="simple_passthrough">Simple pass-through</option>
         <option value="single_mirror">Single flat mirror</option>
         <option value="worked_fixture">§14 worked fixture</option>
+        <option value="csv_validation">CSV validation example (M101+M102)</option>
       </select>
     </label>
     <label class="ctrl">
@@ -51,12 +52,30 @@
       <input id="perfCap" type="number" step="500" value="3000">
     </label>
     <button id="btnRun" class="btn primary">Run raytrace</button>
+    <button id="btnNew" class="btn">New beamline</button>
     <button id="btnLoad" class="btn">Load JSON</button>
     <input id="fileInput" type="file" accept="application/json" style="display:none">
     <button id="btnSave" class="btn">Save JSON</button>
     <button id="btnTests" class="btn ghost">Run self-tests</button>
   </div>
 </header>
+
+<div class="layout-editor">
+  <section class="panel panel-editor">
+    <div class="panel-head">
+      Components <span class="hint">(order matters — every algorithm walks this list in order)</span>
+    </div>
+    <div class="ce-toolbar">
+      <select id="addTypeSelect">
+        <option value="Mirror">Mirror</option>
+        <option value="Aperture">Aperture</option>
+        <option value="RelativeAperture">Relative aperture</option>
+      </select>
+      <button id="btnAddComponent" class="btn">+ Add</button>
+    </div>
+    <div class="ce-list" id="componentList"></div>
+  </section>
+</div>
 
 <main class="layout">
   <section class="panel panel-left">
@@ -73,8 +92,7 @@
   </section>
 
   <section class="panel panel-right">
-    <div class="panel-head">Envelope vs. accumulated travel</div>
-    <label class="inline-check"><input type="checkbox" id="showIntermediate"> show Intermediate stages</label>
+    <div class="panel-head">Envelope vs. accumulated travel <span class="hint">click anywhere on the plot to inspect that Z</span></div>
     <canvas id="envelopeCanvas" width="640" height="360"></canvas>
 
     <div class="panel-head">Selected stage phase space <span class="hint" id="selectedStageLabel"></span></div>
@@ -120,6 +138,7 @@
 <script src="js/examples.js"></script>
 <script src="js/render.js"></script>
 <script src="js/tests.js"></script>
+<script src="js/componentEditor.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

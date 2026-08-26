@@ -1,34 +1,63 @@
 // mirror.js — §8 mirror reflection.
 //
 // IMPLEMENTATION ASSUMPTIONS (the build spec explicitly says to flag ambiguity rather than
-// silently guess — these are the three places §8 left the exact composition underspecified
-// without xrt source, and how this port resolves them; see ASSUMPTIONS.md for the full writeup):
+// silently guess — these are the places §8 left the exact composition underspecified without
+// xrt source, and how this port resolves them; validated against the reference CSV in §16 of
+// ASSUMPTIONS.md, which is what caught and fixed both A2 and A4 below):
 //
 //   A1. "Beamline coordinates" in §8.2/§8.6 means the per-stage transverse+propagation frame
 //       that the (x,y,slope) phase-space representation already lives in (matching how §3/§7
-//       only ever operate on (pos,slope) pairs, never full 3D world coordinates). The mirror's
-//       own §2 world placement is a separate concern (used for the 3D layout / distance tools),
-//       not re-derived here.
-//   A2. Rotation composition order: R_nom = Rz(azimuth) * Ry(nominalPitch); the rotation_sequence
-//       DOF list composes as R_extra = R_first * R_second * R_third (intrinsic composition,
-//       consistent with the ZYX convention established in §2.2); R_total = R_nom * R_extra.
-//   A3. Motion translations (x_val,y_val,z_val + pivot delta) are expressed along the mirror's
-//       NOMINAL local axes (rotated into stage coordinates via R_nom, not R_total) — i.e.
-//       translation stages are assumed mounted on the nominal (undeflected) mirror frame.
+//       only ever operate on (pos,slope) pairs, never full 3D world coordinates).
+//   A2. Nominal orientation R_nom: built directly from its columns (see buildRnom below). At
+//       azimuthal_angle=0, pitch=0 the mirror's lateral axis is Y_in, length axis is Z_in
+//       (dominant — true grazing incidence, beam traveling mostly along the mirror's length with
+//       only a small component along the normal), and normal is X_in. An earlier Rz*Ry-with-
+//       offset formula had length/normal swapped (beam arriving near-normal instead of grazing);
+//       this construction was confirmed against the reference run to leave a purely-horizontal
+//       mirror's Y-divergence completely decoupled, and reproduces the reference tool's own
+//       auto-corrected angles exactly (M101: pitch 1.500°; M102: azimuth 29.852°, pitch 0.407°).
+//   A3. Rotation composition order for the rotation_sequence DOF list: R_extra = R_first *
+//       R_second * R_third (intrinsic composition), applied on top of nominal: R_total = R_nom *
+//       R_extra.
+//   A4. Motion translations (x_val, y_val, z_val + pivot delta) are expressed directly in STAGE
+//       (beamline-local, per A1) coordinates — NOT rotated into the mirror's tilted surface
+//       frame. Re-reading "in the mirror's local frame, not world" as distinguishing per-element
+//       beamline-local coordinates from a larger system's absolute/world coordinates (§2's own
+//       usage of "local"), rather than as "rotated into the mirror's own pitch-tilted surface
+//       orientation" — the latter reading (this port's original guess) makes x_motion/y_motion
+//       physically inert for a flat mirror (translating a flat mirror within its own plane never
+//       changes the reflected ray, only which point of the plane is hit), which cannot be what a
+//       real x_motion/y_motion stage does. Confirmed against the reference run: motion in stage
+//       coordinates is what produces the reference's large, asymmetric X-envelope growth after
+//       M101 from combining x_motion's grazing-incidence lever arm with the beam's own angular
+//       divergence — motion in the surface-tilted frame produces none of that growth.
 //
 // §8.3-§8.5 (flat mirror intersection/normal/reflection law) are transcribed exactly and do not
-// depend on these assumptions.
+// depend on any of the above.
 (function (SR) {
   'use strict';
   const geo = SR.geo;
   const mirror = {};
 
+  // Nominal surface-local axes expressed in stage (incoming-beam) coordinates, built directly
+  // from azimuth/pitch rather than composed as Rz*Ry (see A2 above for why). azimuth is used
+  // exactly as declared (this tool's own convention: 0 = horizontal-left, per §1) — no additional
+  // offset. At azimuth=0, pitch=0: lateral(X)=Y_in, length(Y)=Z_in, normal(Z)=X_in.
+  function buildRnom(azimuth, pitch) {
+    const caz = Math.cos(azimuth), saz = Math.sin(azimuth);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const surfaceX = geo.v3(-saz, caz, 0);              // lateral, unaffected by pitch
+    const surfaceY = geo.v3(sp * caz, sp * saz, cp);     // length (~propagation direction)
+    const surfaceZ = geo.v3(cp * caz, cp * saz, -sp);    // normal
+    return geo.matFromColumns(surfaceX, surfaceY, surfaceZ);
+  }
+
   // §8.1 Build the local-frame-to-stage transform for a candidate motion sample.
   // motion = {yaw, pitch, roll, x, y, z} (Rx_val=yaw, Ry_val=pitch, Rz_val=roll per spec labels)
   mirror.buildTransform = function (mirrorDef, motion) {
     const nominalPitch = mirrorDef.nominal_pitch;
-    const azimuth = mirrorDef.azimuthal_angle - Math.PI / 2;
-    const Rnom = geo.matMul(geo.Rz(azimuth), geo.Ry(nominalPitch));
+    const azimuth = mirrorDef.azimuthal_angle;
+    const Rnom = buildRnom(azimuth, nominalPitch);
 
     const pivot = geo.v3(mirrorDef.x_rotation_arm || 0, 0, mirrorDef.z_rotation_arm || 0);
     const RpitchMotion = geo.Ry(motion.pitch);
@@ -52,7 +81,7 @@
     }
 
     const Rtotal = geo.matMul(Rnom, Rextra);
-    const translationStage = geo.matMulVec(Rnom, translationLocal); // A3
+    const translationStage = translationLocal; // A4: stage-frame translation, not R_nom-rotated
     return { Rtotal, translationStage, Rnom };
   };
 

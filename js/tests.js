@@ -136,8 +136,30 @@
       approx(resolved[relIdx].position[2], 900, 1e-6, 'RelativeAperture: position = target - distance*direction (z)');
     })();
 
+    // --- §8 reflection: purely-horizontal (azimuth=0) mirror must leave Y-divergence decoupled.
+    // This pins the A2 fix found via real-reference validation (ASSUMPTIONS.md §16) — an earlier
+    // R_nom formula leaked Y-divergence into X here.
+    (function () {
+      const mirrorDef = { name: 'M', azimuthal_angle: 0, nominal_pitch: 1.5 * Math.PI / 180, length_min: -250, length_max: 250, rotation_sequence: 'Pitch->Roll->Yaw', x_rotation_arm: 0, z_rotation_arm: 0 };
+      const denom = Math.sqrt(1 + 0.001 * 0.001);
+      const rays = [{ x: 0, y: 0, z: -500, a: 0, b: 0.001 / denom, c: 1 / denom }];
+      const { good } = SR.mirror.reflectRays(rays, mirrorDef, { x: 0, y: 0, z: 0, pitch: 0, roll: 0, yaw: 0 }, null);
+      approx(good[0].b, 0.001 / denom, 1e-9, '§8 A2: horizontal mirror leaves Y-divergence (b) unchanged');
+    })();
+
+    // --- §8 reflection: motion translation must be physically active (A4 fix) — a pure in-plane
+    // (surface-local) translation is inert for a flat mirror, which is why A4 moved translations
+    // into the stage frame; this pins that a nonzero z_motion actually changes the output.
+    (function () {
+      const mirrorDef = { name: 'M', azimuthal_angle: 0, nominal_pitch: 1.5 * Math.PI / 180, length_min: -250, length_max: 250, rotation_sequence: 'Pitch->Roll->Yaw', x_rotation_arm: 0, z_rotation_arm: 0 };
+      const rays = [{ x: 0, y: 0, z: -500, a: 0.001, b: 0, c: 1 }];
+      const base = SR.mirror.reflectRays(rays, mirrorDef, { x: 0, y: 0, z: 0, pitch: 0, roll: 0, yaw: 0 }, null).good[0];
+      const moved = SR.mirror.reflectRays(rays, mirrorDef, { x: 5, y: 0, z: 0, pitch: 0, roll: 0, yaw: 0 }, null).good[0];
+      assert(Math.abs(base.x - moved.x) > 1e-6, '§8 A4: x_motion measurably changes output position (not inert)');
+    })();
+
     // --- End-to-end smoke tests (must not throw) ---
-    ['simple_passthrough', 'single_mirror', 'worked_fixture'].forEach((key) => {
+    ['simple_passthrough', 'single_mirror', 'worked_fixture', 'csv_validation'].forEach((key) => {
       try {
         const ex = SR.examples[key];
         const out = SR.rt.run(ex, ex.config, null);

@@ -13,14 +13,26 @@ straight from disk via `file://`, which fetch()-based module loading can't do re
 
 ## Using it
 
-1. Pick an example from the **Example** dropdown (or **Load JSON** your own beamline file — see
-   `examples/*.json` for the schema, which matches §1 of the build spec).
-2. Choose **coarse** or **fine** mode, adjust `linear_accuracy` / `angular_accuracy` if you want,
+1. Either pick an example from the **Example** dropdown / **Load JSON** your own file, or click
+   **New beamline** to start from just a Source and build up from there.
+2. **Edit components** in the "Components" panel: each card is one element of the ordered list
+   (order matters — every algorithm walks it in sequence). Click a card's name to rename it, click
+   the ▸ chevron to expand its full form (position, sizes, divergences, motion ranges, misalignment
+   tolerances, etc. — angles are shown in degrees for usability and converted to radians under the
+   hood). Use **+ Add** to append a Mirror / Aperture / Relative aperture, ↑/↓ to reorder, ✕ to
+   delete. A Relative aperture's "target element" dropdown lists every component defined earlier in
+   the list, per §1's rule that the target must already exist. The Source can't be deleted or moved
+   (a beamline always starts with exactly one).
+3. Choose **coarse** or **fine** mode, adjust `linear_accuracy` / `angular_accuracy` if you want,
    and hit **Run raytrace**.
-3. The left panel shows the beamline's top-down layout and a clickable table of every raytrace
-   stage. The right panel shows envelope size vs. accumulated travel, and the phase-space polygon
-   (position vs. slope) for whichever stage you've selected.
-4. The **Debug panel** at the bottom (click to expand) has four tabs:
+4. The left panel shows the beamline's top-down layout (updates live as you edit components, even
+   before running) and a clickable table of every raytrace stage (Source, then Before/After for
+   each element — no intermediate rows). The right panel shows envelope size vs. accumulated
+   travel — **click anywhere on that plot to inspect the exact phase space at that Z**, computed
+   on the fly by shearing analytically from the nearest preceding stage (exact, not interpolated
+   guesswork) — and the phase-space polygon (position vs. slope) for whichever stage or clicked
+   point you've selected.
+5. The **Debug panel** at the bottom (click to expand) has four tabs:
    - **Evaluation log** — a line-by-line trace of what was computed at each step (shears, clips,
      ray counts, DE iterations, hull fallbacks, etc.)
    - **Warnings** — anything the engine flagged (auto-corrected mirror angles, spillover rays,
@@ -77,11 +89,15 @@ deviation whenever it triggers).
 
 ## Validating against the real tool
 
-This environment has no access to xrt or the original Python source, so there's no ground-truth
-CSV to diff against (per §15 of the build spec). `js/tests.js` checks the geometry primitives
-against hand-derived expected values and confirms the pipeline runs end-to-end on all three
-bundled examples — including the §14 fixture's M102/G101/M103, which have zero-width motion on
-every DOF and specifically exercise the §7 degenerate-hull fallback path. If you do have access to
-the Python tool, the fastest path to real validation is: run `examples/worked_fixture.json`
-through it in `coarse` mode, export the envelope CSV, and diff the poly_x/poly_y bounds per stage
-against what this app's stage table shows.
+An earlier version of this project had no ground truth to check against. That's since changed —
+the person provided the real Python reference script, its console debug log, and its exported
+envelope CSV for a 2-mirror beamline. Running it found and fixed two real bugs (see ASSUMPTIONS.md
+§16 for the full writeup): the mirror's nominal-orientation formula had the local length/normal
+axes swapped, and motion translations were being applied in the wrong frame. After both fixes,
+**Source through Before-M101 now match the reference exactly**, and both mirrors' auto-corrected
+azimuth/pitch match the reference debug log exactly — but the envelope growth across the mirror
+reflections themselves still doesn't match, and that gap is reported honestly rather than hidden.
+The `csv_validation` example bundled with the app reproduces this exact beamline; load it and
+compare its stage table against the numbers in ASSUMPTIONS.md §16 to see the current state
+yourself. If you have access to the real Python/xrt tool for other beamlines, the same
+load-run-diff approach is the fastest path to catching more of this class of bug.

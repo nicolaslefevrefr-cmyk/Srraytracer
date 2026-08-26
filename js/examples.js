@@ -109,5 +109,47 @@
     ],
   };
 
-  SR.examples = { worked_fixture, simple_passthrough, single_mirror };
+  const csv_validation = {
+    name: 'CSV validation example (M101+M102, no G101/M103)',
+    description: 'Exact reproduction of the reference Python script the build spec was ported from (M101 + M102 only — the script comments out G101/M103). Use this to compare against the reference CSV/debug log in ASSUMPTIONS.md §16: Source→AP101→Before-M101 match the reference exactly, and both mirrors\' auto-corrected azimuth/pitch match the reference log exactly, but the envelope growth across the mirror reflections themselves does not yet fully match — see §16 for the open discrepancy.',
+    config: { linear_accuracy: 0.5, angular_accuracy: 0.00025, mode: 'fine' },
+    world_origin: [0, 0, 0],
+    components: [
+      {
+        type: 'Source', name: 'Source', position: [0, 0, 0],
+        size_x_min: -1, size_x_max: 1, size_y_min: -1, size_y_max: 1,
+        div_a_min: -0.002, div_a_max: 0.002, div_b_min: -0.002, div_b_max: 0.002,
+      },
+      {
+        type: 'Mirror', name: 'M101', position: [0.0, 0.0, 11957.055],
+        azimuthal_angle: 0, nominal_pitch: deg(2), mirrorType: 'Flat',
+        rotation_sequence: 'Pitch->Roll->Yaw', length_min: -250, length_max: 250,
+        x_motion_min: -5, x_motion_max: 5, y_motion_min: 0, y_motion_max: 0, z_motion_min: 0, z_motion_max: 0,
+        pitch_min: -0.005, pitch_max: 0.005, roll_min: 0, roll_max: 0, yaw_min: 0, yaw_max: 0,
+        x_rotation_arm: 0, z_rotation_arm: 0,
+      },
+      {
+        type: 'RelativeAperture', name: 'AP101', target: 'M101', distance: 100,
+        size_x_min: -5, size_x_max: 5, size_y_min: -5, size_y_max: 5,
+      },
+      {
+        type: 'Aperture', name: 'Entrance Slit', position: [130.84, 0.0, 14453.628],
+        size_x_min: -10, size_x_max: 10, size_y_min: -10, size_y_max: 10,
+      },
+      {
+        type: 'Mirror', name: 'M102', position: [407.402, 0.0, 19730.756],
+        azimuthal_angle: 0, nominal_pitch: deg(2), mirrorType: 'Flat',
+        rotation_sequence: 'Pitch->Roll->Yaw', length_min: -250, length_max: 250,
+        x_motion_min: 0, x_motion_max: 0, y_motion_min: 0, y_motion_max: 0, z_motion_min: 0, z_motion_max: 0,
+        pitch_min: 0, pitch_max: 0, roll_min: 0, roll_max: 0, yaw_min: 0, yaw_max: 0,
+        x_rotation_arm: 0, z_rotation_arm: 0,
+      },
+      {
+        type: 'Aperture', name: 'Aperture2', position: [544.619, 15.0, 21849.614],
+        size_x_min: -10, size_x_max: 10, size_y_min: -10, size_y_max: 10,
+      },
+    ],
+  };
+
+  SR.examples = { worked_fixture, simple_passthrough, single_mirror, csv_validation };
 })(window.SR = window.SR || {});

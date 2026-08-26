@@ -35,30 +35,19 @@
       const currPos = geo.v3(...curr.position);
       const diff = geo.sub(currPos, prevPos);
       const d = geo.length(diff);
-      const direction = d > 1e-12 ? geo.scale(diff, 1 / d) : geo.v3(0, 0, 1);
 
-      // §10.2b sub-segmentation into 250mm chunks for intermediate stages
-      let numSegments = Math.floor(d / 250);
-      let remaining = d - numSegments * 250;
-      if (remaining < 10 && numSegments > 0) { numSegments -= 1; remaining += 250; }
-
-      for (let seg = 0; seg < numSegments; seg++) {
-        phaseSpace = { poly_x: geo.shearPoly(phaseSpace.poly_x, 250), poly_y: geo.shearPoly(phaseSpace.poly_y, 250) };
-        accumulatedTravel += 250;
-        const pos = geo.add(prevPos, geo.scale(direction, (seg + 1) * 250));
-        stages.push({
-          element: curr.name, elementType: curr.type, stage: 'Intermediate',
-          position: [pos.x, pos.y, pos.z], travel_distance: 250, accumulated_travel: accumulatedTravel,
-          phase_space_good: phaseSpace, phase_space_over: null,
-        });
-      }
-
-      // §10.2c final shear for the remainder, 'Before' stage
-      phaseSpace = { poly_x: geo.shearPoly(phaseSpace.poly_x, remaining), poly_y: geo.shearPoly(phaseSpace.poly_y, remaining) };
-      accumulatedTravel += remaining;
+      // Single shear over the full gap distance. (An earlier version of this port sub-segmented
+      // gaps into 250mm "Intermediate" stages for visualization; that's been removed — it wasn't
+      // part of the spec, the reference CSV in §16 of ASSUMPTIONS.md only ever has Source/Before/
+      // After rows, and it was mathematically redundant anyway since shear is linear: N chained
+      // shears of the sub-distances equal one shear of the total distance. The envelope plot now
+      // reconstructs intermediate points on demand via SR.render's click-to-inspect, computed by
+      // shearing analytically from the nearest preceding stage rather than being pre-computed.)
+      phaseSpace = { poly_x: geo.shearPoly(phaseSpace.poly_x, d), poly_y: geo.shearPoly(phaseSpace.poly_y, d) };
+      accumulatedTravel += d;
       stages.push({
         element: curr.name, elementType: curr.type, stage: 'Before',
-        position: curr.position.slice(), travel_distance: remaining, accumulated_travel: accumulatedTravel,
+        position: curr.position.slice(), travel_distance: d, accumulated_travel: accumulatedTravel,
         phase_space_good: phaseSpace, phase_space_over: null,
       });
 
@@ -107,6 +96,29 @@
     }
 
     return { stages, warnings, elements };
+  };
+
+  // Given the full `stages` array from a run and an arbitrary travel value, return the phase
+  // space at that point by shearing analytically from the nearest preceding stage — exact
+  // (shear is linear), and lets the UI show a phase-space snapshot at any Z the person clicks on
+  // the envelope plot without having to have pre-computed a stage there. Returns
+  // {phase_space, sourceStage, deltaTravel} where sourceStage is the stage sheared from and
+  // deltaTravel is how far past it the requested point is (0 if travel matches a stage exactly).
+  rt.phaseSpaceAtTravel = function (stages, travel) {
+    let left = stages[0];
+    for (const s of stages) {
+      if (s.accumulated_travel <= travel + 1e-9) left = s;
+      else break;
+    }
+    const dt = travel - left.accumulated_travel;
+    if (Math.abs(dt) < 1e-6) {
+      return { phase_space: left.phase_space_good, sourceStage: left, deltaTravel: 0 };
+    }
+    const phase_space = {
+      poly_x: geo.shearPoly(left.phase_space_good.poly_x, dt),
+      poly_y: geo.shearPoly(left.phase_space_good.poly_y, dt),
+    };
+    return { phase_space, sourceStage: left, deltaTravel: dt };
   };
 
   SR.rt = rt;
