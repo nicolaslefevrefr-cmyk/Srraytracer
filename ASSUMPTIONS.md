@@ -83,18 +83,40 @@ running it through this port immediately found two genuine bugs in the A2/A4 gue
 
 **What still doesn't match, and is left honestly unresolved:** after both fixes, "After M101" and
 onward no longer match the reference CSV. The reference shows the X envelope after M101 growing
-from ±5.05mm to a wide, roughly-symmetric ±12.7/12.9mm; this port's fine-mode search — even
-probed by hand across the full x_motion (±5mm) and pitch (±0.005rad) ranges, well past what the
-optimizer itself finds — only reaches roughly ±5.2mm. Every physically-motivated mechanism this
-port could derive by hand (translation-induced lever-arm shift combined with the beam's own
-angular divergence at that point, which is very narrow — about ±0.0005 rad after AP101's clip;
-pitch-induced shift of the intersection point along the mirror's length axis) comes out one to two
-orders of magnitude too small to explain the reference's growth. This may be a further, deeper
-misunderstanding of xrt's actual geometry that isn't recoverable without its source, or a
-difference in what the reference tool's `mode='fine'` optimizer explores, or something else this
-port hasn't identified. It's reported here rather than papered over. The `csv_validation` example
-bundled with the app reproduces this exact beamline so the gap is directly inspectable — load it,
-run it, and compare its stage table to the reference numbers in this section.
+from ±5.05mm to a wide, roughly-symmetric ±12.7/12.9mm.
+
+This was investigated exhaustively, not just guessed at once and abandoned:
+- A dense 11×11 grid over the full declared range of both of M101's active DOFs (`x_motion`
+  ±5mm, `pitch` ±0.005rad), reflecting 2000 rays (more than the reference's own 915) per grid
+  point and taking the union, tops out around ±5.17mm — nowhere near ±12.7mm.
+- A sensitivity sweep pushed pitch up to 20° (70× the declared bound) and X spread barely moved
+  (±5.15 → ±5.17). Pushed `x_motion` up to 20mm (4× the declared bound) and *every* ray spills
+  over the mirror's physical length instead (grazing-incidence geometry means a translation along
+  the mirror's near-normal direction shifts the effective footprint by roughly
+  `translation / sin(grazing angle)` ≈ 38× the translation — so at 20mm the ±250mm length window
+  is blown through entirely). There is no intermediate value of either DOF, inside or outside the
+  declared bounds, that reaches the reference's spread.
+- The reference's own ray count (915) is consistent with this port's §6 formula at roughly the
+  default accuracy settings (0.5mm / 250µrad) — back-solving from 915 gives a phase-space-area
+  product implying ~249µrad angular accuracy, matching the default almost exactly — so the ray
+  density/formula isn't the source of the mismatch either.
+
+In other words: within every physically-motivated reading of the DOFs this port could construct
+by hand, the reference's envelope growth isn't reachable from this beamline's stated motion
+ranges and beam divergence (~±0.0005 rad after AP101's clip) via a flat-mirror reflection. That
+either points to a further, deeper misunderstanding of xrt's actual geometry that isn't
+recoverable without its source, a difference in what `mode='fine'` explores in the reference tool,
+or some other mechanism this port hasn't identified — reported here rather than papered over.
+
+**If you're able to get more information from the reference tool, the single most useful thing
+would be:** run M101 in isolation with every motion DOF pinned to exactly 0 (no search at all) and
+export just that one reflection's envelope. That isolates the pure geometric reflection from the
+optimizer, and would immediately show whether the ±12.7mm spread exists even with zero motion
+(pointing to a remaining geometry/frame bug in this port) or only appears once the search runs
+(pointing to a difference in what's being explored or optimized). The `csv_validation` example
+bundled with the app reproduces this exact beamline so either side of that comparison is directly
+inspectable — load it, run it, and compare its stage table to the reference numbers in this
+section.
 
 
 ## §8.7: non-flat mirrors
