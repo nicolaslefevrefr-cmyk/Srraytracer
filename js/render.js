@@ -1,242 +1,225 @@
-// render.js — plain <canvas> 2D visualizations. No charting library dependency (documented
-// simplification vs. the build spec's §12 recommendation of Three.js/Chart.js — kept dependency
-// -free so the app runs with zero network access once loaded).
+// render.js — Plotly.js-based visualizations (replaces the earlier plain-canvas renderer).
+// Loaded from CDN in index.html. All plots get native drag-to-zoom, scroll-to-zoom, pan, and
+// hover tooltips for free; annotations are used for component-name callouts on the envelope plot.
 (function (SR) {
   'use strict';
+  const geo = SR.geo;
   const render = {};
 
-  function clear(ctx, canvas) {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
+  const FONT = { family: '"IBM Plex Mono", monospace', size: 11, color: '#22303c' };
+  const PLOTLY_CONFIG = {
+    responsive: true, displaylogo: false, scrollZoom: true,
+    modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+  };
+  const BASE_LAYOUT = () => ({
+    font: FONT, margin: { l: 52, r: 16, t: 10, b: 40 },
+    plot_bgcolor: '#fdfefe', paper_bgcolor: 'rgba(0,0,0,0)',
+    hoverlabel: { font: FONT, bgcolor: '#22303c' },
+    xaxis: { gridcolor: '#e7ecf0', zerolinecolor: '#d7dee4', showline: true, linecolor: '#d7dee4' },
+    yaxis: { gridcolor: '#e7ecf0', zerolinecolor: '#d7dee4', showline: true, linecolor: '#d7dee4' },
+  });
+
+  function ensurePlotly() {
+    if (!window.Plotly) throw new Error('Plotly.js failed to load (needs internet access — see README). Charts cannot render.');
   }
 
-  function niceAxis(min, max, pad = 0.08) {
-    if (min === max) { min -= 1; max += 1; }
-    const span = max - min;
-    return [min - span * pad, max + span * pad];
-  }
-
-  // Top-down (X vs Z) layout of the beamline.
-  render.drawLayout = function (canvas, elements) {
-    const ctx = canvas.getContext('2d');
-    clear(ctx, canvas);
-    const W = canvas.width, H = canvas.height;
-    if (!elements || elements.length === 0) return;
+  // ---------- Beamline layout (top-down, X vs Z) ----------
+  render.drawLayout = function (divId, elements) {
+    ensurePlotly();
+    const el = document.getElementById(divId);
+    if (!elements || elements.length === 0) { window.Plotly.purge(el); return; }
 
     const zs = elements.map((e) => e.position[2]);
     const xs = elements.map((e) => e.position[0]);
-    const [zMin, zMax] = niceAxis(Math.min(...zs), Math.max(...zs), 0.1);
-    const [xMin, xMax] = niceAxis(Math.min(...xs, -50), Math.max(...xs, 50), 0.3);
+    const colors = elements.map((e) => (e.type === 'Source' ? '#e07a3f' : e.type === 'Mirror' ? '#3f7ae0' : '#3fae5c'));
+    const sizes = elements.map((e) => (e.type === 'Source' ? 11 : 9));
+    const names = elements.map((e) => e.name);
 
-    const margin = 40;
-    const sx = (W - 2 * margin) / (zMax - zMin);
-    const sy = (H - 2 * margin) / (xMax - xMin);
-    const toPx = (z, x) => [margin + (z - zMin) * sx, H - margin - (x - xMin) * sy];
+    const trace = {
+      type: 'scatter', mode: 'lines+markers+text',
+      x: zs, y: xs, text: names, textposition: 'top center',
+      textfont: { family: FONT.family, size: 10, color: '#5a6b78' },
+      marker: { color: colors, size: sizes, line: { color: '#fff', width: 1 } },
+      line: { color: '#a9bcca', width: 1.6 },
+      hovertemplate: '%{text}<br>Z=%{x:.2f} mm<br>X=%{y:.2f} mm<extra></extra>',
+    };
 
-    ctx.strokeStyle = '#c9d3dc';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    const [ox, oy] = toPx(zMin, 0);
-    ctx.moveTo(margin, oy); ctx.lineTo(W - margin, oy);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#6a8caf';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    elements.forEach((e, i) => {
-      const [px, py] = toPx(e.position[2], e.position[0]);
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-    });
-    ctx.stroke();
-
-    elements.forEach((e) => {
-      const [px, py] = toPx(e.position[2], e.position[0]);
-      ctx.beginPath();
-      const color = e.type === 'Source' ? '#e07a3f' : e.type === 'Mirror' ? '#3f7ae0' : '#3fae5c';
-      ctx.fillStyle = color;
-      ctx.arc(px, py, e.type === 'Source' ? 5 : 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#22303c';
-      ctx.font = '11px "IBM Plex Mono", monospace';
-      ctx.fillText(e.name, px + 6, py - 6);
+    const layout = Object.assign(BASE_LAYOUT(), {
+      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'Z (mm)', font: FONT } }),
+      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: 'X (mm)', font: FONT } }),
+      showlegend: false,
     });
 
-    ctx.fillStyle = '#5a6b78';
-    ctx.font = '11px "IBM Plex Mono", monospace';
-    ctx.fillText('Z (mm) →', W - margin - 55, H - margin + 22);
-    ctx.save();
-    ctx.translate(14, margin + 10);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText('X (mm)', 0, 0);
-    ctx.restore();
+    window.Plotly.react(el, [trace], layout, PLOTLY_CONFIG);
   };
 
-  // Shared travel-axis mapping so click handling (travelFromPixel) always agrees exactly with
-  // what drawEnvelopePlot rendered — both derive tMin/tMax/margin the same way from the same
-  // stage list.
-  const ENVELOPE_MARGIN = 46;
-  function travelAxis(stages) {
-    const travels = stages.map((s) => s.accumulated_travel);
-    return niceAxis(Math.min(...travels), Math.max(...travels), 0.03);
+  // ---------- Envelope vs accumulated travel (two independent interactive plots: X, Y) ----------
+  // Shears a phase space's position bounds forward by `dt` (exact — shear is linear).
+  function shearedBounds(poly, dt) {
+    if (!poly || poly.length === 0) return null;
+    const sheared = geo.shearPoly(poly, dt);
+    return geo.posBounds(sheared);
   }
 
-  // Inverse of the pixel<->travel mapping used inside drawEnvelopePlot, so a click on the canvas
-  // can be turned back into a travel (mm) value. `pixelX` is in the canvas's own coordinate space
-  // (i.e. already corrected for CSS scaling — see ui.js's click handler).
-  render.travelFromPixel = function (canvas, stages, pixelX) {
-    if (!stages || stages.length === 0) return null;
-    const [tMin, tMax] = travelAxis(stages);
-    const W = canvas.width;
-    const sx = (W - 2 * ENVELOPE_MARGIN) / Math.max(tMax - tMin, 1e-9);
-    const t = tMin + (pixelX - ENVELOPE_MARGIN) / sx;
-    return Math.max(stages[0].accumulated_travel, Math.min(stages[stages.length - 1].accumulated_travel, t));
-  };
+  function xExtract(phaseSpace) {
+    const poly = phaseSpace && phaseSpace.poly_x;
+    return poly && poly.length ? geo.posBounds(poly) : null;
+  }
+  function yExtract(phaseSpace) {
+    const poly = phaseSpace && phaseSpace.poly_y;
+    return poly && poly.length ? geo.posBounds(poly) : null;
+  }
 
-  // Envelope half-size vs accumulated travel, X and Y stacked (two panels in one canvas).
-  // `selectedTravel` (optional, mm) draws a vertical marker line at that Z on both panels.
-  render.drawEnvelopePlot = function (canvas, stages, opts) {
-    const ctx = canvas.getContext('2d');
-    clear(ctx, canvas);
-    const W = canvas.width, H = canvas.height;
-    const filtered = stages;
-    if (filtered.length === 0) return;
-    const selectedTravel = opts && opts.selectedTravel;
-
-    const panelH = H / 2 - 20;
-    const margin = ENVELOPE_MARGIN;
-
-    function panel(yOffset, label, extractFn, color) {
-      const travels = filtered.map((s) => s.accumulated_travel);
-      const vals = filtered.map((s) => extractFn(s.phase_space_good));
-      const overVals = filtered.filter((s) => s.phase_space_over).map((s) => extractFn(s.phase_space_over));
-      const [tMin, tMax] = niceAxis(Math.min(...travels), Math.max(...travels), 0.03);
-      const allVals = vals.flat().concat(overVals.flat());
-      const [vMin, vMax] = niceAxis(Math.min(0, ...allVals), Math.max(0, ...allVals), 0.15);
-
-      const sx = (W - 2 * margin) / Math.max(tMax - tMin, 1e-9);
-      const sy = panelH / Math.max(vMax - vMin, 1e-9);
-      const toPx = (t, v) => [margin + (t - tMin) * sx, yOffset + panelH - (v - vMin) * sy];
-
-      ctx.strokeStyle = '#d7dee4';
-      ctx.strokeRect(margin, yOffset, W - 2 * margin, panelH);
-
-      // zero line
-      const [zx0, zy0] = toPx(tMin, 0);
-      ctx.strokeStyle = '#e3e8ec';
-      ctx.beginPath(); ctx.moveTo(margin, zy0); ctx.lineTo(W - margin, zy0); ctx.stroke();
-
-      // Spillover ("over") rays: sparse (only at mirrors that produced them), so drawn as
-      // individual amber whiskers rather than a connected line — there's nothing meaningful to
-      // interpolate between two mirrors' spillover values.
-      filtered.forEach((s) => {
-        if (!s.phase_space_over) return;
-        const [omn, omx] = extractFn(s.phase_space_over);
-        const [px, pyMx] = toPx(s.accumulated_travel, omx);
-        const pyMn = toPx(s.accumulated_travel, omn)[1];
-        ctx.strokeStyle = '#e0b23f';
-        ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(px, pyMx); ctx.lineTo(px, pyMn); ctx.stroke();
-        ctx.fillStyle = '#e0b23f';
-        ctx.beginPath(); ctx.arc(px, pyMx, 2.6, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px, pyMn, 2.6, 0, Math.PI * 2); ctx.fill();
+  function buildElementAnnotations(stages) {
+    const seen = new Set();
+    const annotations = [];
+    stages.forEach((s) => {
+      if (seen.has(s.element)) return;
+      seen.add(s.element);
+      annotations.push({
+        x: s.accumulated_travel, y: 1.0, xref: 'x', yref: 'paper',
+        text: s.element, showarrow: true, arrowhead: 2, arrowsize: 0.9, arrowwidth: 1,
+        arrowcolor: '#94a3ad', ax: 0, ay: -20,
+        font: { family: FONT.family, size: 9.5, color: '#5a6b78' },
+        yanchor: 'bottom',
       });
+    });
+    return annotations;
+  }
 
-      ['max', 'min'].forEach((which, idx) => {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = idx === 0 ? 2 : 1.4;
-        ctx.beginPath();
-        filtered.forEach((s, i) => {
-          const v = extractFn(s.phase_space_good)[which === 'max' ? 1 : 0];
-          const [px, py] = toPx(s.accumulated_travel, v);
-          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-        });
-        ctx.stroke();
-      });
+  // extractFn(phaseSpace) -> [min,max] | null. `whichAxis` selects poly_x/poly_y for spillover.
+  function buildEnvelopeFigure(stages, extractFn, whichAxis, color, opts) {
+    const travels = stages.map((s) => s.accumulated_travel);
+    const maxVals = [], minVals = [];
+    stages.forEach((s) => {
+      const b = extractFn(s.phase_space_good);
+      maxVals.push(b ? b[1] : null);
+      minVals.push(b ? b[0] : null);
+    });
 
-      filtered.forEach((s) => {
-        const [mn, mx] = extractFn(s.phase_space_good);
-        const [px, pyMx] = toPx(s.accumulated_travel, mx);
-        const pyMn = toPx(s.accumulated_travel, mn)[1];
-        const isMirror = s.elementType === 'Mirror' && s.stage === 'After';
-        ctx.fillStyle = isMirror ? '#3f7ae0' : '#22303c';
-        ctx.beginPath(); ctx.arc(px, pyMx, 2.2, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(px, pyMn, 2.2, 0, Math.PI * 2); ctx.fill();
-      });
+    const traces = [];
 
-      if (selectedTravel != null && selectedTravel >= tMin && selectedTravel <= tMax) {
-        const [mx, my0] = toPx(selectedTravel, vMin);
-        const my1 = toPx(selectedTravel, vMax)[1];
-        ctx.strokeStyle = '#e07a3f';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([4, 3]);
-        ctx.beginPath(); ctx.moveTo(mx, my0); ctx.lineTo(mx, my1); ctx.stroke();
-        ctx.setLineDash([]);
+    // Spillover: extend each mirror's "over" bounds forward by SPILLOVER_DISTANCE via exact
+    // shear, drawn as a fading amber band so its downstream impact is visible at a glance.
+    const SPILLOVER_DISTANCE = 2500;
+    const SPILLOVER_STEPS = 6;
+    stages.forEach((s) => {
+      if (!s.phase_space_over) return;
+      const poly = whichAxis === 'x' ? s.phase_space_over.poly_x : s.phase_space_over.poly_y;
+      if (!poly || poly.length === 0) return;
+      const xsUpper = [], ysUpper = [], xsLower = [], ysLower = [];
+      for (let i = 0; i <= SPILLOVER_STEPS; i++) {
+        const dt = (SPILLOVER_DISTANCE * i) / SPILLOVER_STEPS;
+        const b = shearedBounds(poly, dt);
+        if (!b) continue;
+        xsUpper.push(s.accumulated_travel + dt); ysUpper.push(b[1]);
+        xsLower.push(s.accumulated_travel + dt); ysLower.push(b[0]);
       }
+      traces.push({
+        type: 'scatter', mode: 'lines', x: xsUpper.concat(xsLower.slice().reverse()),
+        y: ysUpper.concat(ysLower.slice().reverse()),
+        fill: 'toself', fillcolor: 'rgba(224,178,63,0.18)', line: { color: 'rgba(224,178,63,0.55)', width: 1.2, dash: 'dot' },
+        name: `${s.element} spillover (+${SPILLOVER_DISTANCE}mm)`, hoverinfo: 'skip', showlegend: false,
+      });
+    });
 
-      ctx.fillStyle = '#22303c';
-      ctx.font = 'bold 12px "IBM Plex Mono", monospace';
-      ctx.fillText(label, margin, yOffset - 6);
+    // Shaded envelope band (good rays)
+    traces.push({
+      type: 'scatter', mode: 'lines', x: travels, y: maxVals,
+      line: { color, width: 2 }, name: 'max', showlegend: false,
+      hovertemplate: 'travel %{x:.1f} mm<br>max %{y:.4f} mm<extra></extra>',
+    });
+    traces.push({
+      type: 'scatter', mode: 'lines', x: travels, y: minVals,
+      line: { color, width: 1.4 }, fill: 'tonexty', fillcolor: hexToRgba(color, 0.10),
+      name: 'min', showlegend: false,
+      hovertemplate: 'travel %{x:.1f} mm<br>min %{y:.4f} mm<extra></extra>',
+    });
+
+    // Markers at each real stage, colored to distinguish mirrors from everything else.
+    const markerColors = stages.map((s) => (s.elementType === 'Mirror' && s.stage === 'After' ? '#3f7ae0' : '#22303c'));
+    ['max', 'min'].forEach((which) => {
+      traces.push({
+        type: 'scatter', mode: 'markers', x: travels, y: which === 'max' ? maxVals : minVals,
+        marker: { color: markerColors, size: 5 }, showlegend: false,
+        customdata: stages.map((s) => `${s.element} / ${s.stage}`),
+        hovertemplate: '%{customdata}<br>travel %{x:.1f} mm<br>%{y:.4f} mm<extra></extra>',
+      });
+    });
+
+    const layout = Object.assign(BASE_LAYOUT(), {
+      margin: { l: 52, r: 16, t: 46, b: 40 },
+      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'accumulated travel (mm)', font: FONT } }),
+      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: (opts && opts.axisLabel) || 'position (mm)', font: FONT } }),
+      annotations: buildElementAnnotations(stages),
+      shapes: (opts && opts.selectedTravel != null) ? [{
+        type: 'line', xref: 'x', yref: 'paper', x0: opts.selectedTravel, x1: opts.selectedTravel, y0: 0, y1: 1,
+        line: { color: '#e07a3f', width: 1.5, dash: 'dash' },
+      }] : [],
+      showlegend: false,
+    });
+
+    return { traces, layout };
+  }
+
+  function hexToRgba(hex, alpha) {
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+    if (!m) return hex;
+    const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+
+  render.drawEnvelopePlots = function (xDivId, yDivId, stages, opts, onClick) {
+    ensurePlotly();
+    if (!stages || stages.length === 0) return;
+    const xEl = document.getElementById(xDivId), yEl = document.getElementById(yDivId);
+
+    const figX = buildEnvelopeFigure(stages, xExtract, 'x', '#3f7ae0', Object.assign({ axisLabel: 'X (mm)' }, opts));
+    const figY = buildEnvelopeFigure(stages, yExtract, 'y', '#3fae5c', Object.assign({ axisLabel: 'Y (mm)' }, opts));
+
+    window.Plotly.react(xEl, figX.traces, figX.layout, PLOTLY_CONFIG);
+    window.Plotly.react(yEl, figY.traces, figY.layout, PLOTLY_CONFIG);
+
+    if (onClick) {
+      xEl.on('plotly_click', (ev) => { if (ev.points && ev.points[0]) onClick(ev.points[0].x); });
+      yEl.on('plotly_click', (ev) => { if (ev.points && ev.points[0]) onClick(ev.points[0].x); });
     }
-
-    panel(0, 'Envelope X (mm) vs accumulated travel (mm)', (phaseSpace) => {
-      const poly = phaseSpace && phaseSpace.poly_x;
-      return poly && poly.length ? SR.geo.posBounds(poly) : [0, 0];
-    }, '#3f7ae0');
-    panel(H / 2 + 20, 'Envelope Y (mm) vs accumulated travel (mm)', (phaseSpace) => {
-      const poly = phaseSpace && phaseSpace.poly_y;
-      return poly && poly.length ? SR.geo.posBounds(poly) : [0, 0];
-    }, '#3fae5c');
   };
 
-  // Single phase-space polygon (position mm vs slope mrad).
-  render.drawPhaseSpace = function (canvas, poly, colorFill, colorStroke) {
-    const ctx = canvas.getContext('2d');
-    clear(ctx, canvas);
-    const W = canvas.width, H = canvas.height;
-    if (!poly || poly.length === 0) {
-      ctx.fillStyle = '#94a3ad';
-      ctx.font = '12px "IBM Plex Mono", monospace';
-      ctx.fillText('(empty)', W / 2 - 20, H / 2);
+  // ---------- Single phase-space polygon (position mm vs slope mrad), with grid + axis units ----------
+  // `overPoly` (optional): the spillover polygon for the same stage, drawn as a second, amber trace.
+  render.drawPhaseSpace = function (divId, poly, colorFill, colorStroke, overPoly) {
+    ensurePlotly();
+    const el = document.getElementById(divId);
+    if ((!poly || poly.length === 0) && (!overPoly || overPoly.length === 0)) {
+      window.Plotly.react(el, [], Object.assign(BASE_LAYOUT(), {
+        annotations: [{ text: '(empty)', xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, showarrow: false, font: { family: FONT.family, size: 12, color: '#94a3ad' } }],
+        xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'position (mm)', font: FONT } }),
+        yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: 'slope (mrad)', font: FONT } }),
+      }), PLOTLY_CONFIG);
       return;
     }
-    const margin = 36;
-    const ps = poly.map((v) => ({ p: v.p, s: v.s * 1000 })); // rad -> mrad
-    const [pMin, pMax] = niceAxis(Math.min(...ps.map((v) => v.p)), Math.max(...ps.map((v) => v.p)));
-    const [sMin, sMax] = niceAxis(Math.min(...ps.map((v) => v.s)), Math.max(...ps.map((v) => v.s)));
-    const sx = (W - 2 * margin) / Math.max(pMax - pMin, 1e-9);
-    const sy = (H - 2 * margin) / Math.max(sMax - sMin, 1e-9);
-    const toPx = (v) => [margin + (v.p - pMin) * sx, H - margin - (v.s - sMin) * sy];
+    const traces = [];
+    function polyTrace(p, fill, stroke, name) {
+      const xs = p.map((v) => v.p).concat([p[0].p]);
+      const ys = p.map((v) => v.s * 1000).concat([p[0].s * 1000]);
+      return {
+        type: 'scatter', mode: 'lines+markers', x: xs, y: ys, name,
+        fill: p.length > 2 ? 'toself' : 'none', fillcolor: fill,
+        line: { color: stroke, width: 1.6 }, marker: { color: stroke, size: 4 },
+        hovertemplate: `${name}<br>pos %{x:.4f} mm<br>slope %{y:.4f} mrad<extra></extra>`,
+      };
+    }
+    if (poly && poly.length) traces.push(polyTrace(poly, colorFill || 'rgba(63,122,224,0.18)', colorStroke || '#3f7ae0', 'good'));
+    if (overPoly && overPoly.length) traces.push(polyTrace(overPoly, 'rgba(224,178,63,0.20)', '#e0b23f', 'spillover'));
 
-    ctx.strokeStyle = '#d7dee4';
-    ctx.strokeRect(margin, margin, W - 2 * margin, H - 2 * margin);
-
-    ctx.beginPath();
-    ps.forEach((v, i) => {
-      const [px, py] = toPx(v);
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    const layout = Object.assign(BASE_LAYOUT(), {
+      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'position (mm)', font: FONT } }),
+      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: 'slope (mrad)', font: FONT } }),
+      showlegend: !!(overPoly && overPoly.length),
+      legend: { font: { family: FONT.family, size: 9.5 }, orientation: 'h', y: 1.08 },
     });
-    if (ps.length > 2) ctx.closePath();
-    ctx.fillStyle = colorFill || 'rgba(63,122,224,0.18)';
-    ctx.strokeStyle = colorStroke || '#3f7ae0';
-    ctx.lineWidth = 1.6;
-    if (ps.length > 2) ctx.fill();
-    ctx.stroke();
-    ps.forEach((v) => {
-      const [px, py] = toPx(v);
-      ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = colorStroke || '#3f7ae0'; ctx.fill();
-    });
-
-    ctx.fillStyle = '#5a6b78';
-    ctx.font = '10px "IBM Plex Mono", monospace';
-    ctx.fillText('position (mm)', W - margin - 70, H - margin + 20);
-    ctx.save();
-    ctx.translate(12, margin + 4);
-    ctx.rotate(-Math.PI / 2);
-    ctx.fillText('slope (mrad)', 0, 0);
-    ctx.restore();
+    window.Plotly.react(el, traces, layout, PLOTLY_CONFIG);
   };
 
   SR.render = render;

@@ -1,15 +1,17 @@
 # SR Envelope Raytracer — browser port
 
 A pure HTML/CSS/JS implementation of the synchrotron-radiation envelope raytracer described in
-`SR_Raytracer_WebApp_Build_Instructions.md`. No build step, no server required, no external
-runtime dependency other than a Google Fonts stylesheet (the app still runs fully offline if that
-fails to load — it just falls back to system fonts).
+`SR_Raytracer_WebApp_Build_Instructions.md`. No build step, no server required. Charts are
+rendered with [Plotly.js](https://plotly.com/javascript/) loaded from CDN — this is the one real
+runtime dependency and it needs internet access; everything else (the physics engine, the
+component editor, load/save) works fully offline.
 
 ## Run it
 
-Open `index.html` directly in a browser. That's it. (Everything is loaded via plain `<script>`
-tags in dependency order — no ES modules, no bundler — specifically so it also works when opened
-straight from disk via `file://`, which fetch()-based module loading can't do reliably.)
+Open `index.html` directly in a browser (with internet access, for the Plotly CDN load). Aside
+from that, everything is loaded via plain `<script>` tags in dependency order — no ES modules, no
+bundler — specifically so it also works when opened straight from disk via `file://`, which
+fetch()-based module loading can't do reliably.
 
 ## Using it
 
@@ -25,14 +27,21 @@ straight from disk via `file://`, which fetch()-based module loading can't do re
    (a beamline always starts with exactly one).
 3. Choose **coarse** or **fine** mode, adjust `linear_accuracy` / `angular_accuracy` if you want,
    and hit **Run raytrace**.
-4. The left panel shows the beamline's top-down layout (updates live as you edit components, even
-   before running) and a clickable table of every raytrace stage (Source, then Before/After for
-   each element — no intermediate rows). The right panel shows envelope size vs. accumulated
-   travel — **click anywhere on that plot to inspect the exact phase space at that Z**, computed
-   on the fly by shearing analytically from the nearest preceding stage (exact, not interpolated
-   guesswork) — and the phase-space polygon (position vs. slope) for whichever stage or clicked
+4. The left panel shows the beamline's interactive top-down layout (scroll to zoom, drag to pan,
+   hover for exact coordinates — updates live as you edit components, even before running) and a
+   clickable table of every raytrace stage (Source, then Before/After for each element — no
+   intermediate rows), including each stage's min/max X and Y bounds directly in the table for
+   comparing against reference data. The right panel shows envelope size vs. accumulated travel as
+   two interactive Plotly charts (drag to zoom, scroll to zoom, double-click to reset, hover for
+   exact values) with component names called out via arrows — **click anywhere on either plot to
+   inspect the exact phase space at that Z**, computed on the fly by shearing analytically from
+   the nearest preceding stage (exact, not interpolated guesswork). Any mirror that produced
+   spillover rays shows an amber band extending 2500mm downstream (via the same exact shear) so
+   its impact is visible at a glance. Below that, the phase-space polygon (position vs. slope,
+   with grid and units) for whichever stage or clicked
    point you've selected.
-5. The **Debug panel** at the bottom (click to expand) has four tabs:
+5. The **Debug panel** at the bottom (click to expand) has four tabs, each with a fixed height so
+   switching tabs doesn't shift the rest of the page:
    - **Evaluation log** — a line-by-line trace of what was computed at each step (shears, clips,
      ray counts, DE iterations, hull fallbacks, etc.)
    - **Warnings** — anything the engine flagged (auto-corrected mirror angles, spillover rays,

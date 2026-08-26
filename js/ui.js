@@ -54,7 +54,7 @@
   function refreshLayoutPreview() {
     try {
       const elements = SR.bl.resolveBeamline(state.beamline.components, log);
-      SR.render.drawLayout($('layoutCanvas'), elements);
+      SR.render.drawLayout('layoutPlot', elements);
     } catch (e) {
       log('ERROR resolving beamline: ' + e.message);
     }
@@ -126,6 +126,11 @@
   function areaStr(poly) {
     return poly && poly.length ? SR.geo.polygonArea(poly).toExponential(2) : '0';
   }
+  function boundsStr(poly) {
+    if (!poly || poly.length === 0) return ['—', '—'];
+    const [mn, mx] = SR.geo.posBounds(poly);
+    return [mn.toFixed(3), mx.toFixed(3)];
+  }
 
   // Resolve the current selection into the phase space + a label to display. Table-row
   // selections show the exact stage; envelope-plot clicks show an analytically-sheared snapshot
@@ -153,7 +158,7 @@
 
   function renderResult() {
     const { stages, elements } = state.result;
-    SR.render.drawLayout($('layoutCanvas'), elements);
+    SR.render.drawLayout('layoutPlot', elements);
 
     $('stageCount').textContent = `(${stages.length})`;
     const tbody = $('stageTable').querySelector('tbody');
@@ -162,9 +167,12 @@
       const tr = document.createElement('tr');
       if (state.selection.mode === 'stage' && i === state.selection.stageIndex) tr.classList.add('selected');
       const tagClass = s.elementType === 'Mirror' ? 'mirror' : s.elementType === 'Aperture' ? 'aperture' : 'source';
+      const [xmn, xmx] = boundsStr(s.phase_space_good.poly_x);
+      const [ymn, ymx] = boundsStr(s.phase_space_good.poly_y);
       tr.innerHTML = `<td>${i}</td><td>${s.element}</td>` +
         `<td><span class="tag ${tagClass}">${s.stage}</span></td>` +
         `<td>${s.accumulated_travel.toFixed(1)}</td>` +
+        `<td>${xmn}</td><td>${xmx}</td><td>${ymn}</td><td>${ymx}</td>` +
         `<td>${areaStr(s.phase_space_good.poly_x)}</td>` +
         `<td>${areaStr(s.phase_space_good.poly_y)}</td>`;
       tr.addEventListener('click', () => { state.selection = { mode: 'stage', stageIndex: i }; renderResult(); });
@@ -172,41 +180,14 @@
     });
 
     const current = resolveSelection();
-    SR.render.drawEnvelopePlot($('envelopeCanvas'), stages, { selectedTravel: current.travel });
-
-    $('selectedStageLabel').textContent = `— ${current.label}`;
-    SR.render.drawPhaseSpace($('phaseXCanvas'), current.phase_space.poly_x, 'rgba(63,122,224,0.18)', '#3f7ae0');
-    SR.render.drawPhaseSpace($('phaseYCanvas'), current.phase_space.poly_y, 'rgba(63,174,92,0.18)', '#3fae5c');
-    if (current.phase_space_over) {
-      overlaySpillover($('phaseXCanvas'), current.phase_space_over.poly_x);
-      overlaySpillover($('phaseYCanvas'), current.phase_space_over.poly_y);
-    }
-  }
-
-  function overlaySpillover(canvas, poly) {
-    if (!poly || poly.length < 2) return;
-    // Re-draw on top using the same coordinate mapping logic as drawPhaseSpace would need;
-    // simplest robust approach: just note it exists via a small badge, to avoid duplicating
-    // render.js's internal scaling math here.
-    const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#e07a3f';
-    ctx.font = 'bold 10px "IBM Plex Mono", monospace';
-    ctx.fillText('⚠ spillover rays present (see Warnings tab)', 8, 14);
-  }
-
-  // Envelope-plot click -> travel (mm), corrected for CSS scaling of the canvas.
-  function wireEnvelopeClick() {
-    $('envelopeCanvas').addEventListener('click', (ev) => {
-      if (!state.result) return;
-      const canvas = $('envelopeCanvas');
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const pixelX = (ev.clientX - rect.left) * scaleX;
-      const travel = SR.render.travelFromPixel(canvas, state.result.stages, pixelX);
-      if (travel == null) return;
+    SR.render.drawEnvelopePlots('envelopeXPlot', 'envelopeYPlot', stages, { selectedTravel: current.travel }, (travel) => {
       state.selection = { mode: 'travel', travel };
       renderResult();
     });
+
+    $('selectedStageLabel').textContent = `— ${current.label}`;
+    SR.render.drawPhaseSpace('phaseXPlot', current.phase_space.poly_x, 'rgba(63,122,224,0.18)', '#3f7ae0', current.phase_space_over ? current.phase_space_over.poly_x : null);
+    SR.render.drawPhaseSpace('phaseYPlot', current.phase_space.poly_y, 'rgba(63,174,92,0.18)', '#3fae5c', current.phase_space_over ? current.phase_space_over.poly_y : null);
   }
 
   // ---------- Debug tabs ----------
@@ -263,8 +244,11 @@ the rotation composition order, and which frame translation motions are expresse
 inline rather than silently guessed — see comments at the top of <code>js/mirror.js</code>.
 
 <h4>Not implemented (out of scope for this pass)</h4>
-3D Three.js viewer / STL export / CSV export (§13) — replaced with 2D canvas views (layout,
-envelope-vs-travel, per-stage phase space) so the app has zero external runtime dependencies.
+3D Three.js viewer / STL export (§13) — replaced with interactive Plotly.js 2D views (layout,
+envelope-vs-travel, per-stage phase space) with native zoom/pan/hover. This does introduce an
+external runtime dependency (Plotly, loaded from CDN) where earlier versions of this app had
+none — the trade-off requested for genuinely interactive charts. If Plotly fails to load (no
+internet access), charts will show an error rather than silently rendering blank.
 Web Worker for §9 (runs synchronously; large ray counts in fine mode may be slow — reduce
 linear_accuracy/angular_accuracy or use coarse mode for quick iteration).
 
@@ -321,7 +305,6 @@ fixture's M102/G101/M103) — it does not confirm numerical agreement with the o
     $('btnRun').addEventListener('click', runRaytrace);
     $('btnSave').addEventListener('click', saveJSON);
     $('btnTests').addEventListener('click', runSelfTests);
-    wireEnvelopeClick();
 
     $('btnNew').addEventListener('click', () => {
       if (state.beamline && !confirm('Start a new beamline? Unsaved changes will be lost (use Save JSON first if you want to keep them).')) return;

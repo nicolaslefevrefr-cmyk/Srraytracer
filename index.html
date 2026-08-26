@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
 
@@ -79,31 +80,32 @@
 
 <main class="layout">
   <section class="panel panel-left">
-    <div class="panel-head">Beamline layout <span class="hint">(top-down, X vs Z)</span></div>
-    <canvas id="layoutCanvas" width="520" height="220"></canvas>
+    <div class="panel-head">Beamline layout <span class="hint">(top-down, X vs Z — scroll to zoom, drag to pan)</span></div>
+    <div id="layoutPlot" class="plotly-host plotly-host-sm"></div>
 
     <div class="panel-head">Stages <span class="hint" id="stageCount"></span></div>
     <div class="stage-table-wrap">
       <table class="stage-table" id="stageTable">
-        <thead><tr><th>#</th><th>element</th><th>stage</th><th>travel (mm)</th><th>area X</th><th>area Y</th></tr></thead>
+        <thead><tr><th>#</th><th>element</th><th>stage</th><th>travel (mm)</th><th>min X</th><th>max X</th><th>min Y</th><th>max Y</th><th>area X</th><th>area Y</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
   <section class="panel panel-right">
-    <div class="panel-head">Envelope vs. accumulated travel <span class="hint">click anywhere on the plot to inspect that Z · <span style="color:#3f7ae0">blue/green</span> = good rays · <span style="color:#e0b23f">amber</span> = spillover</span></div>
-    <canvas id="envelopeCanvas" width="640" height="360"></canvas>
+    <div class="panel-head">Envelope vs. accumulated travel <span class="hint">click to inspect that Z · drag to zoom, scroll to pan · <span style="color:#3f7ae0">blue/green</span> = good rays · <span style="color:#e0b23f">amber</span> = spillover (shown up to 2500mm downstream)</span></div>
+    <div id="envelopeXPlot" class="plotly-host plotly-host-lg"></div>
+    <div id="envelopeYPlot" class="plotly-host plotly-host-lg"></div>
 
     <div class="panel-head">Selected stage phase space <span class="hint" id="selectedStageLabel"></span></div>
     <div class="phase-pair">
       <div>
         <div class="phase-label">poly_x (position mm vs slope mrad)</div>
-        <canvas id="phaseXCanvas" width="300" height="220"></canvas>
+        <div id="phaseXPlot" class="plotly-host plotly-host-md"></div>
       </div>
       <div>
         <div class="phase-label">poly_y (position mm vs slope mrad)</div>
-        <canvas id="phaseYCanvas" width="300" height="220"></canvas>
+        <div id="phaseYPlot" class="plotly-host plotly-host-md"></div>
       </div>
     </div>
   </section>
@@ -121,10 +123,12 @@
       <button class="debug-tab" data-tab="tests">Self-tests</button>
       <button class="debug-tab" data-tab="about">Assumptions &amp; scope</button>
     </div>
-    <div class="debug-content" id="debugLog"></div>
-    <div class="debug-content" id="debugWarnings" style="display:none"></div>
-    <div class="debug-content" id="debugTests" style="display:none"></div>
-    <div class="debug-content" id="debugAbout" style="display:none"></div>
+    <div class="debug-content-wrap">
+      <div class="debug-content" id="debugLog"></div>
+      <div class="debug-content" id="debugWarnings" style="display:none"></div>
+      <div class="debug-content" id="debugTests" style="display:none"></div>
+      <div class="debug-content" id="debugAbout" style="display:none"></div>
+    </div>
   </div>
 </section>
 
