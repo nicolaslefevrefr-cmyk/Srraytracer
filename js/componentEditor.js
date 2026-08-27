@@ -28,6 +28,7 @@
       x_motion_min: 0, x_motion_max: 0, y_motion_min: 0, y_motion_max: 0, z_motion_min: 0, z_motion_max: 0,
       pitch_min: 0, pitch_max: 0, roll_min: 0, roll_max: 0, yaw_min: 0, yaw_max: 0,
       x_rotation_arm: 0, z_rotation_arm: 0,
+      location: 'PTL', _misalignmentOverridden: false,
       misalignment_tolerances: { X: [0, 0], Y: [0, 0], Z: [0, 0], Pitch: [0, 0], Roll: [0, 0], Yaw: [0, 0] },
     };
   }
@@ -35,6 +36,7 @@
     return {
       type: 'Aperture', name: name || 'AP1', position: [0, 0, 15000],
       size_x_min: -5, size_x_max: 5, size_y_min: -5, size_y_max: 5,
+      location: 'PTL', _misalignmentOverridden: false,
       misalignment_tolerances: { X: [0, 0], Y: [0, 0], Z: [0, 0] },
     };
   }
@@ -42,6 +44,8 @@
     return {
       type: 'RelativeAperture', name: name || 'RelAP1', target: target || '', distance: 100,
       size_x_min: -5, size_x_max: 5, size_y_min: -5, size_y_max: 5,
+      location: 'PTL', _misalignmentOverridden: false,
+      misalignment_tolerances: { X: [0, 0], Y: [0, 0], Z: [0, 0] },
     };
   }
 
@@ -49,6 +53,8 @@
     return {
       name: 'New beamline', description: '', config: { linear_accuracy: 0.5, angular_accuracy: 0.00025, mode: 'coarse' },
       world_origin: [0, 0, 0],
+      apply_motions_misalignments: false,
+      location_misalignment_defaults: SR.bl.defaultLocationMisalignments(),
       components: [defaultSource('Source')],
     };
   };
@@ -120,6 +126,58 @@
     if (!tol[key]) tol[key] = [0, 0];
     return minMaxRow(labelText, tol[key], (i, v) => { tol[key][i] = v; }, 'any', scale);
   }
+  // Override-aware version: displays the EFFECTIVE value (location default unless already
+  // overridden); the first edit clones that effective value into comp.misalignment_tolerances,
+  // flips comp._misalignmentOverridden, and all further edits (here or later) land on that
+  // frozen copy — so changing the location defaults afterward never moves this component again.
+  function misalignRowEff(labelText, comp, key, effective, scale) {
+    scale = scale || 1;
+    const pair = effective[key] || [0, 0];
+    return minMaxRow(labelText, pair, (i, v) => {
+      if (!comp._misalignmentOverridden) {
+        comp.misalignment_tolerances = JSON.parse(JSON.stringify(effective));
+        comp._misalignmentOverridden = true;
+        scheduleRerender(); // one-time, to reveal the "overridden" label + reset button
+      }
+      comp.misalignment_tolerances[key][i] = v;
+    }, 'any', scale);
+  }
+  function locationSelect(comp) {
+    return field('location', selectInput(comp.location || 'PTL',
+      SR.bl.LOCATIONS.map((k) => [k, SR.bl.LOCATION_LABELS[k]]),
+      (v) => { comp.location = v; if (!comp._misalignmentOverridden) scheduleRerender(); }));
+  }
+  // Renders the misalignment-tolerances subsection, or nothing at all if the global "apply
+  // motions & misalignments" checkbox is off. `axes` is the ordered list of tolerance keys this
+  // component type has (Aperture: X,Y,Z; Mirror: + Pitch,Roll,Yaw).
+  function buildMisalignmentSection(comp, ctx, axes) {
+    const wrap = el('div');
+    if (!ctx.applyMotions) return wrap;
+    const effective = SR.bl.resolveEffectiveMisalignment(comp, ctx.locationDefaults);
+    const headRow = el('div', 'ce-subhead-row');
+    headRow.appendChild(el('div', 'ce-subhead', 'misalignment tolerances' + (comp._misalignmentOverridden ? ' — overridden' : ' — from location default')));
+    if (comp._misalignmentOverridden) {
+      const resetBtn = el('button', 'ce-icon-btn', '↺');
+      resetBtn.title = 'Reset to location default';
+      resetBtn.type = 'button';
+      resetBtn.addEventListener('click', () => { comp._misalignmentOverridden = false; scheduleRerender(); onChangeCb(); });
+      headRow.appendChild(resetBtn);
+    }
+    wrap.appendChild(headRow);
+    const row1 = el('div', 'ce-row');
+    row1.appendChild(misalignRowEff('X (mm)', comp, 'X', effective));
+    row1.appendChild(misalignRowEff('Y (mm)', comp, 'Y', effective));
+    row1.appendChild(misalignRowEff('Z (mm)', comp, 'Z', effective));
+    wrap.appendChild(row1);
+    if (axes.includes('Pitch')) {
+      const row2 = el('div', 'ce-row');
+      row2.appendChild(misalignRowEff('Pitch (mrad)', comp, 'Pitch', effective, 1000));
+      row2.appendChild(misalignRowEff('Roll (mrad)', comp, 'Roll', effective, 1000));
+      row2.appendChild(misalignRowEff('Yaw (mrad)', comp, 'Yaw', effective, 1000));
+      wrap.appendChild(row2);
+    }
+    return wrap;
+  }
 
   // ---------- per-type forms ----------
   function buildSourceForm(comp) {
@@ -136,35 +194,31 @@
     return body;
   }
 
-  function buildApertureForm(comp) {
+  function buildApertureForm(comp, ctx) {
     const body = el('div', 'ce-body');
     body.appendChild(positionFields(comp));
     const row1 = el('div', 'ce-row');
     row1.appendChild(minMaxRow('size X (mm)', [comp.size_x_min, comp.size_x_max], (i, v) => { if (i === 0) comp.size_x_min = v; else comp.size_x_max = v; }));
     row1.appendChild(minMaxRow('size Y (mm)', [comp.size_y_min, comp.size_y_max], (i, v) => { if (i === 0) comp.size_y_min = v; else comp.size_y_max = v; }));
+    row1.appendChild(locationSelect(comp));
     body.appendChild(row1);
-    if (!comp.misalignment_tolerances) comp.misalignment_tolerances = { X: [0, 0], Y: [0, 0], Z: [0, 0] };
-    const tol = comp.misalignment_tolerances;
-    body.appendChild(el('div', 'ce-subhead', 'misalignment tolerances'));
-    const row2 = el('div', 'ce-row');
-    row2.appendChild(misalignRow('X (mm)', tol, 'X'));
-    row2.appendChild(misalignRow('Y (mm)', tol, 'Y'));
-    row2.appendChild(misalignRow('Z (mm)', tol, 'Z'));
-    body.appendChild(row2);
+    body.appendChild(buildMisalignmentSection(comp, ctx, ['X', 'Y', 'Z']));
     return body;
   }
 
-  function buildRelativeApertureForm(comp, precedingNames) {
+  function buildRelativeApertureForm(comp, precedingNames, ctx) {
     const body = el('div', 'ce-body');
     const row0 = el('div', 'ce-row');
     row0.appendChild(field('target element', selectInput(comp.target, precedingNames.length ? precedingNames : [['', '(no earlier element)']], (v) => { comp.target = v; })));
     row0.appendChild(field('distance before target (mm)', numInput(comp.distance, (v) => { comp.distance = v; })));
+    row0.appendChild(locationSelect(comp));
     body.appendChild(row0);
     const row1 = el('div', 'ce-row');
     row1.appendChild(minMaxRow('size X (mm)', [comp.size_x_min, comp.size_x_max], (i, v) => { if (i === 0) comp.size_x_min = v; else comp.size_x_max = v; }));
     row1.appendChild(minMaxRow('size Y (mm)', [comp.size_y_min, comp.size_y_max], (i, v) => { if (i === 0) comp.size_y_min = v; else comp.size_y_max = v; }));
     body.appendChild(row1);
     body.appendChild(el('div', 'ce-note', 'Position is computed at run time from the target and distance (§1 RelativeAperture) — not editable directly.'));
+    body.appendChild(buildMisalignmentSection(comp, ctx, ['X', 'Y', 'Z']));
     return body;
   }
 
@@ -173,7 +227,7 @@
     'Roll->Yaw->Pitch', 'Yaw->Pitch->Roll', 'Yaw->Roll->Pitch',
   ];
 
-  function buildMirrorForm(comp) {
+  function buildMirrorForm(comp, ctx) {
     const body = el('div', 'ce-body');
     body.appendChild(positionFields(comp));
 
@@ -184,6 +238,7 @@
       ['Flat', 'Flat (exact)'], ['Paraboloid', 'Paraboloid (flagged sketch)'],
       ['Toroid', 'Toroid (not implemented)'], ['Ellipsoid', 'Ellipsoid (not implemented)'],
     ], (v) => { comp.mirrorType = v; scheduleRerender(); })));
+    row1.appendChild(locationSelect(comp));
     body.appendChild(row1);
 
     if (comp.mirrorType === 'Paraboloid' || comp.mirrorType === 'Ellipsoid') {
@@ -209,17 +264,21 @@
     rowLen.appendChild(field('length max', numInput(comp.length_max, (v) => { comp.length_max = v; })));
     body.appendChild(rowLen);
 
-    body.appendChild(el('div', 'ce-subhead', 'motion ranges'));
-    const rowM1 = el('div', 'ce-row');
-    rowM1.appendChild(minMaxRow('x motion (mm)', [comp.x_motion_min, comp.x_motion_max], (i, v) => { if (i === 0) comp.x_motion_min = v; else comp.x_motion_max = v; }));
-    rowM1.appendChild(minMaxRow('y motion (mm)', [comp.y_motion_min, comp.y_motion_max], (i, v) => { if (i === 0) comp.y_motion_min = v; else comp.y_motion_max = v; }));
-    rowM1.appendChild(minMaxRow('z motion (mm)', [comp.z_motion_min, comp.z_motion_max], (i, v) => { if (i === 0) comp.z_motion_min = v; else comp.z_motion_max = v; }));
-    body.appendChild(rowM1);
-    const rowM2 = el('div', 'ce-row');
-    rowM2.appendChild(minMaxRow('pitch (mdeg)', [comp.pitch_min, comp.pitch_max], (i, v) => { if (i === 0) comp.pitch_min = v; else comp.pitch_max = v; }, 'any', 1000 * R2D));
-    rowM2.appendChild(minMaxRow('roll (mdeg)', [comp.roll_min, comp.roll_max], (i, v) => { if (i === 0) comp.roll_min = v; else comp.roll_max = v; }, 'any', 1000 * R2D));
-    rowM2.appendChild(minMaxRow('yaw (mdeg)', [comp.yaw_min, comp.yaw_max], (i, v) => { if (i === 0) comp.yaw_min = v; else comp.yaw_max = v; }, 'any', 1000 * R2D));
-    body.appendChild(rowM2);
+    if (ctx.applyMotions) {
+      body.appendChild(el('div', 'ce-subhead', 'motion ranges'));
+      const rowM1 = el('div', 'ce-row');
+      rowM1.appendChild(minMaxRow('x motion (mm)', [comp.x_motion_min, comp.x_motion_max], (i, v) => { if (i === 0) comp.x_motion_min = v; else comp.x_motion_max = v; }));
+      rowM1.appendChild(minMaxRow('y motion (mm)', [comp.y_motion_min, comp.y_motion_max], (i, v) => { if (i === 0) comp.y_motion_min = v; else comp.y_motion_max = v; }));
+      rowM1.appendChild(minMaxRow('z motion (mm)', [comp.z_motion_min, comp.z_motion_max], (i, v) => { if (i === 0) comp.z_motion_min = v; else comp.z_motion_max = v; }));
+      body.appendChild(rowM1);
+      const rowM2 = el('div', 'ce-row');
+      rowM2.appendChild(minMaxRow('pitch (mdeg)', [comp.pitch_min, comp.pitch_max], (i, v) => { if (i === 0) comp.pitch_min = v; else comp.pitch_max = v; }, 'any', 1000 * R2D));
+      rowM2.appendChild(minMaxRow('roll (mdeg)', [comp.roll_min, comp.roll_max], (i, v) => { if (i === 0) comp.roll_min = v; else comp.roll_max = v; }, 'any', 1000 * R2D));
+      rowM2.appendChild(minMaxRow('yaw (mdeg)', [comp.yaw_min, comp.yaw_max], (i, v) => { if (i === 0) comp.yaw_min = v; else comp.yaw_max = v; }, 'any', 1000 * R2D));
+      body.appendChild(rowM2);
+    } else {
+      body.appendChild(el('div', 'ce-note', 'Motion ranges & misalignment tolerances are hidden and excluded from the run — check "apply motions & misalignments" in the header to edit and include them.'));
+    }
 
     const row3 = el('div', 'ce-row');
     row3.appendChild(field('rotation sequence', selectInput(comp.rotation_sequence, ROTATION_SEQUENCES, (v) => { comp.rotation_sequence = v; })));
@@ -227,25 +286,13 @@
     row3.appendChild(field('z rotation arm (mm)', numInput(comp.z_rotation_arm || 0, (v) => { comp.z_rotation_arm = v; })));
     body.appendChild(row3);
 
-    if (!comp.misalignment_tolerances) comp.misalignment_tolerances = SR.bl.defaultMirrorMisalignment();
-    const tol = comp.misalignment_tolerances;
-    body.appendChild(el('div', 'ce-subhead', 'misalignment tolerances'));
-    const row4 = el('div', 'ce-row');
-    row4.appendChild(misalignRow('X (mm)', tol, 'X'));
-    row4.appendChild(misalignRow('Y (mm)', tol, 'Y'));
-    row4.appendChild(misalignRow('Z (mm)', tol, 'Z'));
-    body.appendChild(row4);
-    const row5 = el('div', 'ce-row');
-    row5.appendChild(misalignRow('Pitch (mdeg)', tol, 'Pitch', 1000 * R2D));
-    row5.appendChild(misalignRow('Roll (mdeg)', tol, 'Roll', 1000 * R2D));
-    row5.appendChild(misalignRow('Yaw (mdeg)', tol, 'Yaw', 1000 * R2D));
-    body.appendChild(row5);
+    body.appendChild(buildMisalignmentSection(comp, ctx, ['X', 'Y', 'Z', 'Pitch', 'Roll', 'Yaw']));
     return body;
   }
 
   // ---------- card / list rendering ----------
   let containerRef = null, beamlineRef = null, rerenderScheduled = false;
-  function scheduleRerender() { if (!rerenderScheduled) { rerenderScheduled = true; setTimeout(() => { rerenderScheduled = false; ce.render(containerRef, beamlineRef, onChangeCb); }, 0); } }
+  function scheduleRerender() { if (!rerenderScheduled) { rerenderScheduled = true; setTimeout(() => { rerenderScheduled = false; ce.render(containerRef, beamlineRef, onChangeCb, ctxRef); }, 0); } }
 
   function typeBadgeClass(type) {
     if (type === 'Mirror') return 'mirror';
@@ -253,7 +300,7 @@
     return 'aperture';
   }
 
-  function renderCard(comp, idx, components, container) {
+  function renderCard(comp, idx, components, container, ctx) {
     const card = el('div', 'ce-card');
     const head = el('div', 'ce-card-head');
 
@@ -309,20 +356,22 @@
     if (expandedSet.has(comp)) {
       let body;
       if (comp.type === 'Source') body = buildSourceForm(comp);
-      else if (comp.type === 'Aperture') body = buildApertureForm(comp);
-      else if (comp.type === 'RelativeAperture') body = buildRelativeApertureForm(comp, components.slice(0, idx).map((c) => c.name));
-      else if (comp.type === 'Mirror') body = buildMirrorForm(comp);
+      else if (comp.type === 'Aperture') body = buildApertureForm(comp, ctx);
+      else if (comp.type === 'RelativeAperture') body = buildRelativeApertureForm(comp, components.slice(0, idx).map((c) => c.name), ctx);
+      else if (comp.type === 'Mirror') body = buildMirrorForm(comp, ctx);
       else body = el('div', 'ce-note', `Unknown type "${comp.type}"`);
       card.appendChild(body);
     }
     container.appendChild(card);
   }
 
-  ce.render = function (container, beamline, onChange) {
+  let ctxRef = { applyMotions: false, locationDefaults: null };
+  ce.render = function (container, beamline, onChange, ctx) {
     containerRef = container; beamlineRef = beamline; onChangeCb = onChange || (() => {});
+    if (ctx) ctxRef = ctx;
     container.innerHTML = '';
     if (!beamline || !beamline.components) return;
-    beamline.components.forEach((comp, idx) => renderCard(comp, idx, beamline.components, container));
+    beamline.components.forEach((comp, idx) => renderCard(comp, idx, beamline.components, container, ctxRef));
   };
 
   ce.addComponent = function (beamline, type) {

@@ -56,7 +56,9 @@
       "yaw_min": 0,
       "yaw_max": 0,
       "x_rotation_arm": 0,
-      "z_rotation_arm": 0
+      "z_rotation_arm": 0,
+      "location": "PTL",
+      "_misalignmentOverridden": true
     },
     {
       "type": "Aperture",
@@ -69,7 +71,9 @@
       "size_x_min": -10,
       "size_x_max": 10,
       "size_y_min": -10,
-      "size_y_max": 10
+      "size_y_max": 10,
+      "location": "PTL",
+      "_misalignmentOverridden": true
     }
   ]
 }

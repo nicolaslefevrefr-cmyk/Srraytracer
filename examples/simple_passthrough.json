@@ -54,7 +54,9 @@
           -50,
           50
         ]
-      }
+      },
+      "location": "PTL",
+      "_misalignmentOverridden": true
     }
   ]
 }

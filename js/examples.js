@@ -111,7 +111,7 @@
 
   const csv_validation = {
     name: 'CSV validation example (M101+M102, no G101/M103)',
-    description: 'Exact reproduction of the reference Python script the build spec was ported from (M101 + M102 only — the script comments out G101/M103). Use this to compare against the reference CSV/debug log in ASSUMPTIONS.md §16: Source→AP101→Before-M101 match the reference exactly, and both mirrors\' auto-corrected azimuth/pitch match the reference log exactly, but the envelope growth across the mirror reflections themselves does not yet fully match — see §16 for the open discrepancy.',
+    description: 'Exact reproduction of the reference Python script the build spec was ported from (M101 + M102 only — the script comments out G101/M103). Compare against ASSUMPTIONS.md §16-§17: with "apply motions & misalignments" unchecked (matching the zero-motion reference run), Source through the M101 reflection match the reference to within ~0.007mm; M102 (an oblique mirror) still only partially matches — see §17 for the precise, still-open gap.',
     config: { linear_accuracy: 0.5, angular_accuracy: 0.00025, mode: 'fine' },
     world_origin: [0, 0, 0],
     components: [
@@ -150,6 +150,23 @@
       },
     ],
   };
+
+  // Every bundled example was authored (and, for csv_validation/worked_fixture, validated
+  // against reference data — see ASSUMPTIONS.md) with explicit misalignment values, typically
+  // zero. Mark them all as location='PTL' + overridden so loading an example never silently
+  // swaps in the location-based defaults from js/beamline.js's defaultLocationMisalignments()
+  // (which are non-zero for X/Y/Z even at PTL) — the person can still explicitly reset any of
+  // them to location defaults from the component editor if they want to.
+  function normalizeLocationDefaults(bl) {
+    bl.components.forEach((c) => {
+      if (c.type === 'Mirror' || c.type === 'Aperture' || c.type === 'RelativeAperture') {
+        if (c.location === undefined) c.location = 'PTL';
+        if (c._misalignmentOverridden === undefined) c._misalignmentOverridden = true;
+      }
+    });
+    return bl;
+  }
+  [worked_fixture, simple_passthrough, single_mirror, csv_validation].forEach(normalizeLocationDefaults);
 
   SR.examples = { worked_fixture, simple_passthrough, single_mirror, csv_validation };
 })(window.SR = window.SR || {});

@@ -192,6 +192,21 @@
       }
     });
 
+    // --- e2e with the UI's actual default perf cap (3000): this is the exact scenario that
+    // regressed once — worked_fixture's degenerate M102/G101/M103 hulls can accumulate enough
+    // vertices that nx*ny exceeds a perf cap this low, which used to throw a hard error instead
+    // of raising numRays to the true minimum (see raysample.js). ---
+    (function () {
+      try {
+        const ex = SR.examples.worked_fixture;
+        const config = Object.assign({}, ex.config, { perf_max_rays: 3000 });
+        const out = SR.rt.run(ex, config, null);
+        assert(out.stages.length > 0, 'e2e: worked_fixture with UI default perf_max_rays=3000 does not throw');
+      } catch (e) {
+        assert(false, `e2e: worked_fixture with perf_max_rays=3000 threw: ${e.message}`);
+      }
+    })();
+
     return results;
   }
 

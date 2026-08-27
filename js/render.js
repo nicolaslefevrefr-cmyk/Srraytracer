@@ -180,11 +180,29 @@
     window.Plotly.react(xEl, figX.traces, figX.layout, PLOTLY_CONFIG);
     window.Plotly.react(yEl, figY.traces, figY.layout, PLOTLY_CONFIG);
 
-    if (onClick) {
-      xEl.on('plotly_click', (ev) => { if (ev.points && ev.points[0]) onClick(ev.points[0].x); });
-      yEl.on('plotly_click', (ev) => { if (ev.points && ev.points[0]) onClick(ev.points[0].x); });
-    }
+    if (onClick) { wireTravelClick(xEl, onClick); wireTravelClick(yEl, onClick); }
   };
+
+  // Reads the click position directly against Plotly's current x-axis range (rather than relying
+  // on plotly_click, which only fires for clicks near an actual data point) so any point on the
+  // plot — including empty space between mirrors — maps to a travel value, and correctly follows
+  // the axis range after zooming/panning since the range is re-read on every click.
+  function wireTravelClick(el, onClick) {
+    if (el.__travelClickWired) return;
+    el.__travelClickWired = true;
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('.modebar')) return;
+      const dragLayer = el.querySelector('.nsewdrag');
+      if (!dragLayer) return;
+      const rect = dragLayer.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const xFrac = (ev.clientX - rect.left) / rect.width;
+      if (xFrac < 0 || xFrac > 1) return;
+      const xaxis = el._fullLayout && el._fullLayout.xaxis;
+      if (!xaxis || !xaxis.range) return;
+      onClick(xaxis.range[0] + xFrac * (xaxis.range[1] - xaxis.range[0]));
+    });
+  }
 
   // ---------- Single phase-space polygon (position mm vs slope mrad), with grid + axis units ----------
   // `overPoly` (optional): the spillover polygon for the same stage, drawn as a second, amber trace.

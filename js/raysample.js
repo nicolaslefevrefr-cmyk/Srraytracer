@@ -49,8 +49,15 @@
     const backY = geo.shearPoly(phaseSpace.poly_y, d);
 
     const nx = backX.length, ny = backY.length;
+    // §6.1's own precondition is numRays >= nx*ny (every vertex pair must be represented) — that
+    // is a hard requirement of the algorithm, not adjustable. The UI's browser-safety perf cap
+    // (see raytrace.js) is a separate, non-spec clamp and can legitimately land below this for a
+    // phase space with many vertices (e.g. after §7's degenerate-hull fallback runs repeatedly).
+    // When that happens, silently erroring out is worse than slightly exceeding the requested
+    // cap, so numRays is raised to the true minimum here and it's logged — never thrown.
     if (numRays < nx * ny) {
-      throw new Error(`sample_rays_from_phase_space: numRays (${numRays}) must be >= nx*ny (${nx}*${ny}=${nx * ny})`);
+      if (log) log(`sample_rays_from_phase_space: requested numRays (${numRays}) is below the hard minimum nx*ny (${nx}*${ny}=${nx * ny}) — raising to ${nx * ny} (every vertex pair must be represented; this is §6.1's own precondition, not the perf cap)`);
+      numRays = nx * ny;
     }
 
     const pairs = [];

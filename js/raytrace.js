@@ -130,5 +130,35 @@
     return { phase_space, sourceStage: left, deltaTravel: dt };
   };
 
+  // Expand a stage list with extra "Intermediate" points computed on demand, purely for display
+  // (table + envelope plot) — never re-runs the raytrace. Every gap between two consecutive real
+  // stages is pure free travel (a single §3 shear, per how §10 is implemented above), so each
+  // intermediate point is exact, not interpolated/approximated: it's the same
+  // phaseSpaceAtTravel() shear used for click-to-inspect, just sampled at regular steps instead
+  // of one arbitrary point.
+  rt.expandWithIntermediates = function (stages, stepMm) {
+    const step = stepMm || 250;
+    const out = [];
+    for (let i = 0; i < stages.length; i++) {
+      out.push(stages[i]);
+      if (i + 1 >= stages.length) continue;
+      const t0 = stages[i].accumulated_travel, t1 = stages[i + 1].accumulated_travel;
+      const gap = t1 - t0;
+      if (gap <= step) continue; // includes the common case of Before/After sharing the same travel (gap=0)
+      const n = Math.floor(gap / step);
+      for (let k = 1; k <= n; k++) {
+        const t = t0 + k * step;
+        if (t >= t1 - 1e-6) break;
+        const r = rt.phaseSpaceAtTravel(stages, t);
+        out.push({
+          element: stages[i].element, elementType: stages[i].elementType, stage: 'Intermediate',
+          position: null, travel_distance: step, accumulated_travel: t,
+          phase_space_good: r.phase_space, phase_space_over: null,
+        });
+      }
+    }
+    return out;
+  };
+
   SR.rt = rt;
 })(window.SR = window.SR || {});

@@ -52,6 +52,11 @@
       <span>max rays (perf cap)</span>
       <input id="perfCap" type="number" step="500" value="3000">
     </label>
+    <label class="ctrl narrow ctrl-check">
+      <span>&nbsp;</span>
+      <span class="check-row"><input id="applyMotionsCheckbox" type="checkbox"> apply motions &amp; misalignments</span>
+    </label>
+    <button id="btnGeneralMisalignments" class="btn">General misalignments…</button>
     <button id="btnRun" class="btn primary">Run raytrace</button>
     <button id="btnNew" class="btn">New beamline</button>
     <button id="btnLoad" class="btn">Load JSON</button>
@@ -60,6 +65,28 @@
     <button id="btnTests" class="btn ghost">Run self-tests</button>
   </div>
 </header>
+
+<div class="modal-backdrop" id="misalignModalBackdrop" style="display:none">
+  <div class="modal" id="misalignModal">
+    <div class="modal-head">
+      <span>General misalignments — defaults by location</span>
+      <button class="modal-close" id="misalignModalClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <p class="modal-hint">
+        These are the default misalignment tolerances applied to every Mirror/Aperture/Relative
+        aperture based on its own <code>location</code> — unless that specific component has been
+        edited directly, in which case its own values are kept and these defaults no longer apply
+        to it, even if you change them here.
+      </p>
+      <div id="misalignLocationForms"></div>
+    </div>
+    <div class="modal-foot">
+      <button id="btnMisalignReset" class="btn ghost">Reset to built-in defaults</button>
+      <button id="btnMisalignSave" class="btn primary">Done</button>
+    </div>
+  </div>
+</div>
 
 <div class="layout-editor">
   <section class="panel panel-editor">
@@ -83,7 +110,9 @@
     <div class="panel-head">Beamline layout <span class="hint">(top-down, X vs Z — scroll to zoom, drag to pan)</span></div>
     <div id="layoutPlot" class="plotly-host plotly-host-sm"></div>
 
-    <div class="panel-head">Stages <span class="hint" id="stageCount"></span></div>
+    <div class="panel-head">Stages <span class="hint" id="stageCount"></span>
+      <label class="inline-check-right"><input type="checkbox" id="showIntermediateCheckbox"> show intermediate points (every 250mm)</label>
+    </div>
     <div class="stage-table-wrap">
       <table class="stage-table" id="stageTable">
         <thead><tr><th>#</th><th>element</th><th>stage</th><th>travel (mm)</th><th>min X</th><th>max X</th><th>min Y</th><th>max Y</th><th>area X</th><th>area Y</th></tr></thead>

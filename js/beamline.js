@@ -139,5 +139,65 @@
     return { rotation, translation, azimuth: euler.az, pitch: euler.pitch, yaw: euler.yaw };
   };
 
+  // ---------- Location-based default misalignments ----------
+  // Matches the person's reference Python dicts exactly (Pitch/Roll/Yaw given there as a single
+  // "value/1000.0" scalar — read as a SYMMETRIC tolerance range [-value, value] in radians, since
+  // §1's schema always wants a [min,max] pair for these).
+  bl.LOCATIONS = ['PTL', 'FrontEnd', 'ExperimentalFloor'];
+  bl.LOCATION_LABELS = { PTL: 'PTL', FrontEnd: 'Front End', ExperimentalFloor: 'Experimental floor' };
+
+  bl.defaultLocationMisalignments = function () {
+    return {
+      PTL: { X: [-2, 2], Y: [-2, 2], Z: [-2, 2], Pitch: 0.0 / 1000, Roll: 0.0 / 1000, Yaw: 0.0 / 1000 },
+      FrontEnd: { X: [-2, 2], Y: [-2, 2], Z: [-2, 2], Pitch: 1.0 / 1000, Roll: 5.0 / 1000, Yaw: 1.0 / 1000 },
+      ExperimentalFloor: { X: [-2, 2], Y: [-2.3, 2.3], Z: [-2, 2], Pitch: 1.0 / 1000, Roll: 5.0 / 1000, Yaw: 1.0 / 1000 },
+    };
+  };
+
+  // Effective misalignment_tolerances for a component: its own stored value if the person has
+  // overridden it (comp._misalignmentOverridden), otherwise derived fresh from its `location`
+  // and the current location defaults — so un-overridden components track live edits to the
+  // location defaults, while overridden ones stay exactly as the person set them.
+  bl.resolveEffectiveMisalignment = function (component, locationDefaults) {
+    if (component._misalignmentOverridden && component.misalignment_tolerances) {
+      return component.misalignment_tolerances;
+    }
+    const loc = component.location || 'PTL';
+    const d = (locationDefaults || bl.defaultLocationMisalignments())[loc] || bl.defaultLocationMisalignments().PTL;
+    const base = { X: d.X.slice(), Y: d.Y.slice(), Z: d.Z.slice() };
+    if (component.type === 'Mirror') {
+      base.Pitch = [-d.Pitch, d.Pitch];
+      base.Roll = [-d.Roll, d.Roll];
+      base.Yaw = [-d.Yaw, d.Yaw];
+    }
+    return base;
+  };
+
+  const ZERO_MISALIGN_APERTURE = { X: [0, 0], Y: [0, 0], Z: [0, 0] };
+  const ZERO_MISALIGN_MIRROR = { X: [0, 0], Y: [0, 0], Z: [0, 0], Pitch: [0, 0], Roll: [0, 0], Yaw: [0, 0] };
+
+  // Build the component list actually used for a run: resolves each component's effective
+  // misalignment (per resolveEffectiveMisalignment above), and — if `applyMotions` is false —
+  // zeroes every motion range and misalignment tolerance for the computation only, leaving the
+  // person's stored/edited values in `rawComponents` completely untouched so re-checking the box
+  // brings them straight back.
+  bl.buildEffectiveComponents = function (rawComponents, locationDefaults, applyMotions) {
+    return rawComponents.map((c) => {
+      if (c.type !== 'Mirror' && c.type !== 'Aperture' && c.type !== 'RelativeAperture') return Object.assign({}, c);
+      const effective = Object.assign({}, c);
+      effective.misalignment_tolerances = bl.resolveEffectiveMisalignment(c, locationDefaults);
+      if (!applyMotions) {
+        effective.misalignment_tolerances = c.type === 'Mirror' ? Object.assign({}, ZERO_MISALIGN_MIRROR) : Object.assign({}, ZERO_MISALIGN_APERTURE);
+        if (c.type === 'Mirror') {
+          Object.assign(effective, {
+            x_motion_min: 0, x_motion_max: 0, y_motion_min: 0, y_motion_max: 0, z_motion_min: 0, z_motion_max: 0,
+            pitch_min: 0, pitch_max: 0, roll_min: 0, roll_max: 0, yaw_min: 0, yaw_max: 0,
+          });
+        }
+      }
+      return effective;
+    });
+  };
+
   SR.bl = bl;
 })(window.SR = window.SR || {});
