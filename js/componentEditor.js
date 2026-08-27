@@ -234,10 +234,16 @@
     const row1 = el('div', 'ce-row');
     row1.appendChild(field('azimuthal angle (deg)', numInput(comp.azimuthal_angle * R2D, (v) => { comp.azimuthal_angle = v * D2R; })));
     row1.appendChild(field('nominal pitch (deg)', numInput(comp.nominal_pitch * R2D, (v) => { comp.nominal_pitch = v * D2R; })));
-    row1.appendChild(field('mirror type', selectInput(comp.mirrorType || 'Flat', [
-      ['Flat', 'Flat (exact)'], ['Paraboloid', 'Paraboloid (flagged sketch)'],
-      ['Toroid', 'Toroid (not implemented)'], ['Ellipsoid', 'Ellipsoid (not implemented)'],
-    ], (v) => { comp.mirrorType = v; scheduleRerender(); })));
+    const mirrorTypeField = field('mirror type', selectInput(comp.mirrorType || 'Flat', [
+      ['Flat', 'Flat'], ['Paraboloid', 'Paraboloid'], ['Toroid', 'Toroid'], ['Ellipsoid', 'Ellipsoid'],
+    ], (v) => { comp.mirrorType = v; scheduleRerender(); }));
+    const statusClass = { Flat: 'status-approved', Paraboloid: 'status-experimental', Toroid: 'status-deprecated', Ellipsoid: 'status-deprecated' }[comp.mirrorType || 'Flat'];
+    const statusText = { Flat: 'exact', Paraboloid: 'flagged sketch', Toroid: 'not implemented', Ellipsoid: 'not implemented' }[comp.mirrorType || 'Flat'];
+    const statusBadge = el('span', `status-badge ${statusClass}`, statusText);
+    statusBadge.style.marginTop = '4px';
+    statusBadge.style.alignSelf = 'flex-start';
+    mirrorTypeField.appendChild(statusBadge);
+    row1.appendChild(mirrorTypeField);
     row1.appendChild(locationSelect(comp));
     body.appendChild(row1);
 

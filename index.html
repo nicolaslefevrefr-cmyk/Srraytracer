@@ -5,20 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SR Envelope Raytracer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
 
-<div class="rail"><div class="rail-ticks"></div></div>
-
 <header class="topbar">
+  <div class="topbar-accent"></div>
   <div class="brand">
     <span class="brand-mark">SR</span>
     <div class="brand-text">
-      <h1>Envelope Raytracer</h1>
-      <p>browser-based synchrotron beamline phase-space tracer &mdash; §1&ndash;§10 port</p>
+      <h1><span class="brand-main">SR Envelope</span> <span class="brand-highlight">Raytracer</span></h1>
+      <p>browser-based synchrotron beamline phase-space tracer &mdash; §1&ndash;§10 port
+        <button class="version-badge" id="versionBadge" type="button" title="Click for changelog"></button>
+      </p>
     </div>
   </div>
 
@@ -34,7 +35,7 @@
       </select>
     </label>
     <label class="ctrl">
-      <span>Mode</span>
+      <span>Mode <button class="info-dot" id="modeInfoBtn" type="button" title="What's the difference?">ⓘ</button></span>
       <select id="modeSelect">
         <option value="coarse">coarse</option>
         <option value="fine">fine</option>
@@ -63,8 +64,11 @@
     <input id="fileInput" type="file" accept="application/json" style="display:none">
     <button id="btnSave" class="btn">Save JSON</button>
     <button id="btnTests" class="btn ghost">Run self-tests</button>
+    <button class="theme-toggle" id="themeToggle" type="button" title="Toggle light/dark theme"></button>
   </div>
 </header>
+
+<div class="mode-info-popover" id="modeInfoPopover" style="display:none"></div>
 
 <div class="modal-backdrop" id="misalignModalBackdrop" style="display:none">
   <div class="modal" id="misalignModal">
@@ -88,6 +92,16 @@
   </div>
 </div>
 
+<div class="modal-backdrop" id="versionModalBackdrop" style="display:none">
+  <div class="modal" id="versionModal">
+    <div class="modal-head">
+      <span>Version history</span>
+      <button class="modal-close" id="versionModalClose">✕</button>
+    </div>
+    <div class="modal-body" id="versionHistoryBody"></div>
+  </div>
+</div>
+
 <div class="layout-editor">
   <section class="panel panel-editor">
     <div class="panel-head">
@@ -107,8 +121,17 @@
 
 <main class="layout">
   <section class="panel panel-left">
-    <div class="panel-head">Beamline layout <span class="hint">(top-down, X vs Z — scroll to zoom, drag to pan)</span></div>
-    <div id="layoutPlot" class="plotly-host plotly-host-sm"></div>
+    <div class="panel-head">Beamline layout <span class="hint">scroll to zoom, drag to pan &mdash; X-Z and Y-Z share the same Z axis and stay in sync</span></div>
+    <div class="layout-plot-pair">
+      <div>
+        <div class="phase-label">X-Z (top-down)</div>
+        <div id="layoutPlotXZ" class="plotly-host plotly-host-sm"></div>
+      </div>
+      <div>
+        <div class="phase-label">Y-Z (side view)</div>
+        <div id="layoutPlotYZ" class="plotly-host plotly-host-sm"></div>
+      </div>
+    </div>
 
     <div class="panel-head">Stages <span class="hint" id="stageCount"></span>
       <label class="inline-check-right"><input type="checkbox" id="showIntermediateCheckbox"> show intermediate points (every 250mm)</label>
@@ -161,6 +184,7 @@
   </div>
 </section>
 
+<script src="js/version.js"></script>
 <script src="js/geometry.js"></script>
 <script src="js/beamline.js"></script>
 <script src="js/phasespace.js"></script>
@@ -175,3 +199,4 @@
 <script src="js/ui.js"></script>
 </body>
 </html>
+

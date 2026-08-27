@@ -1,10 +1,14 @@
 # SR Envelope Raytracer — browser port
 
 A pure HTML/CSS/JS implementation of the synchrotron-radiation envelope raytracer described in
-`SR_Raytracer_WebApp_Build_Instructions.md`. No build step, no server required. Charts are
-rendered with [Plotly.js](https://plotly.com/javascript/) loaded from CDN — this is the one real
-runtime dependency and it needs internet access; everything else (the physics engine, the
-component editor, load/save) works fully offline.
+`SR_Raytracer_WebApp_Build_Instructions.md`, styled to the ALS Engineering Tools design spec
+(Syne/DM Sans fonts, light/dark theme). No build step, no server required. Charts are rendered
+with [Plotly.js](https://plotly.com/javascript/) loaded from CDN — this is the one real runtime
+dependency and it needs internet access; everything else (the physics engine, the component
+editor, load/save, theming) works fully offline.
+
+Current version: see the badge in the app's header (click it for the full changelog) or
+`js/version.js`.
 
 ## Run it
 
@@ -33,17 +37,21 @@ fetch()-based module loading can't do reliably.
    & misalignments** checkbox (off by default) controls whether motion ranges and misalignment
    tolerances are shown at all and whether they're used in the run — unchecking it doesn't erase
    anything you've set, it's just excluded from that run.
-4. Choose **coarse** or **fine** mode, adjust `linear_accuracy` / `angular_accuracy` if you want,
-   and hit **Run raytrace**.
-5. The left panel shows the beamline's interactive top-down layout (scroll to zoom, drag to pan,
-   hover for exact coordinates — updates live as you edit components, even before running) and a
-   clickable table of every raytrace stage (Source, then Before/After for each element by default;
-   check **show intermediate points** next to the table header to also see every 250mm along the
-   way, computed on the fly with no re-run needed), including each stage's min/max X and Y bounds
-   directly in the table for comparing against reference data. The right panel shows envelope size
-   vs. accumulated travel as two interactive Plotly charts (drag to zoom, scroll to zoom,
-   double-click to reset, hover for exact values) with component names called out via arrows —
-   **click anywhere on either plot to inspect the exact phase space at that Z**, computed on the
+4. Click the ⓘ next to **Mode** for a concrete coarse-vs-fine comparison (grid resolution, DE
+   parameters, ray-count formula) pulled straight from the engine's own constants. Then choose
+   **coarse** or **fine**, adjust `linear_accuracy` / `angular_accuracy` if you want, and hit
+   **Run raytrace**.
+5. The left panel shows the beamline's interactive layout in both **X-Z** (top-down) and **Y-Z**
+   (side view) — the two share the same Z-axis and stay in sync when you zoom or pan either one
+   (scroll to zoom, drag to pan, hover for exact coordinates — updates live as you edit
+   components, even before running) — and a clickable table of every raytrace stage (Source, then
+   Before/After for each element by default; check **show intermediate points** next to the table
+   header to also see every 250mm along the way, computed on the fly with no re-run needed),
+   including each stage's min/max X and Y bounds directly in the table for comparing against
+   reference data. The right panel shows envelope size vs. accumulated travel as two interactive
+   Plotly charts (drag to zoom, scroll to zoom, double-click to reset, hover for exact values)
+   with component names called out via arrows — **click anywhere on either plot to inspect the
+   exact phase space at that Z**, computed on the
    fly by shearing analytically from the nearest preceding stage (exact, not interpolated
    guesswork; this also respects the current zoom level). Any mirror that produced spillover rays
    shows an amber band extending 2500mm downstream (via the same exact shear) so its impact is
@@ -68,6 +76,7 @@ fetch()-based module loading can't do reliably.
 index.html
 css/styles.css
 js/
+  version.js         current version + changelog (shown via the header badge)
   geometry.js      §2 math primitives, polygon ops (shear, area, hull, Sutherland–Hodgman clip)
   beamline.js       §1 data model / RelativeAperture resolution, §2 coordinate frames & transforms
   phasespace.js     §4 source radiate(), §5 aperture cut(), §7 hull reconstruction + union

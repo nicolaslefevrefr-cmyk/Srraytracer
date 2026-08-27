@@ -260,3 +260,36 @@ running current build seems structurally unlikely. If the discrepancy persists a
 refresh / re-downloading the zip, that would be worth another look with the exact steps that
 produced it.
 
+## §19: ALS Engineering Tools design system, versioning, linked Y-Z view, mode comparison
+
+Applied the person's ALS design spec (fonts, color tokens with light/dark theme + toggle, header
+layout, border-radius tokens, card hover/entrance styling, status badges) across the whole app —
+see `css/styles.css`. Data-visualization colors (the blue/green/amber used for X/Y/spillover on
+the charts) are deliberately kept separate from the `--accent`/`--accent2` UI tokens, since the
+spec covers UI chrome, not chart semantics, and conflating them would make the charts harder to
+read. The mirror-type maturity notes (§8.7) are now also shown as the spec's own status-badge
+pattern (Flat=approved, Paraboloid=experimental, Toroid/Ellipsoid=deprecated) since that's exactly
+the distinction the badge system is for.
+
+Added `js/version.js` as a single source of truth for the app's version (shown as a small badge
+in the header, click for the full changelog) — bumped on every meaningful change from here on.
+
+Added a second, linked beamline-layout view (Y-Z, side view, alongside the existing X-Z top-down
+view) — panning/zooming either one applies the same Z-range to the other via `plotly_relayout`.
+
+Added a coarse-vs-fine comparison (ⓘ button next to the Mode selector) stating the actual grid
+resolutions, ray-count formula, and DE parameters straight from `convergence.js`'s own constants
+rather than generic prose.
+
+Verified the §2/§10 geometric orientation-mismatch auto-correction against the person's reference
+Python tool for the single-mirror case: this port computes azimuth=0.000°, pitch=1.431° for M1 —
+an exact match to the reference's own printed warning. The warning does already surface in this
+port's Warnings tab; confirmed via test that it's present in the returned warnings array for this
+exact case (not just logged, but part of the same list the UI's Warnings tab renders from).
+
+**Robustness fix found while testing the theme toggle:** `localStorage` access was unguarded and
+throws in some environments for `file://`-opened pages (this app's own headless test harness hit
+exactly this). Wrapped in `safeStorageGet`/`safeStorageSet` so a failure there degrades to
+"theme choice isn't remembered between visits" instead of taking down the whole page — consistent
+with the app's stated goal of working when opened directly from disk.
+

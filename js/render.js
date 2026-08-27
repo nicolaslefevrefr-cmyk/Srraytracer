@@ -24,33 +24,63 @@
   }
 
   // ---------- Beamline layout (top-down, X vs Z) ----------
-  render.drawLayout = function (divId, elements) {
+  // `axisIndex`: 0 for X-Z (top-down), 1 for Y-Z (side view).
+  render.drawLayout = function (divId, elements, axisIndex, axisLabel) {
     ensurePlotly();
     const el = document.getElementById(divId);
     if (!elements || elements.length === 0) { window.Plotly.purge(el); return; }
 
     const zs = elements.map((e) => e.position[2]);
-    const xs = elements.map((e) => e.position[0]);
+    const ys = elements.map((e) => e.position[axisIndex]);
     const colors = elements.map((e) => (e.type === 'Source' ? '#e07a3f' : e.type === 'Mirror' ? '#3f7ae0' : '#3fae5c'));
     const sizes = elements.map((e) => (e.type === 'Source' ? 11 : 9));
     const names = elements.map((e) => e.name);
+    const label = axisLabel || (axisIndex === 0 ? 'X' : 'Y');
 
     const trace = {
       type: 'scatter', mode: 'lines+markers+text',
-      x: zs, y: xs, text: names, textposition: 'top center',
+      x: zs, y: ys, text: names, textposition: 'top center',
       textfont: { family: FONT.family, size: 10, color: '#5a6b78' },
       marker: { color: colors, size: sizes, line: { color: '#fff', width: 1 } },
       line: { color: '#a9bcca', width: 1.6 },
-      hovertemplate: '%{text}<br>Z=%{x:.2f} mm<br>X=%{y:.2f} mm<extra></extra>',
+      hovertemplate: `%{text}<br>Z=%{x:.2f} mm<br>${label}=%{y:.2f} mm<extra></extra>`,
     };
 
     const layout = Object.assign(BASE_LAYOUT(), {
       xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'Z (mm)', font: FONT } }),
-      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: 'X (mm)', font: FONT } }),
+      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: `${label} (mm)`, font: FONT } }),
       showlegend: false,
     });
 
     window.Plotly.react(el, [trace], layout, PLOTLY_CONFIG);
+  };
+
+  // Keeps two plots' Z (x-)axis ranges in sync (e.g. the X-Z and Y-Z layout views): panning or
+  // zooming either one applies the same x-range to the other. Guards against feedback loops with
+  // a simple re-entrancy flag. Safe to call every render — only attaches its listeners once per
+  // element.
+  render.linkZAxis = function (divIdA, divIdB) {
+    ensurePlotly();
+    const a = document.getElementById(divIdA), b = document.getElementById(divIdB);
+    if (!a || !b || a.__zLinked) return;
+    a.__zLinked = true; b.__zLinked = true;
+    let syncing = false;
+    function relay(from, to) {
+      from.on('plotly_relayout', (ev) => {
+        if (syncing) return;
+        const range = [];
+        if (ev['xaxis.range[0]'] !== undefined) range[0] = ev['xaxis.range[0]'];
+        if (ev['xaxis.range[1]'] !== undefined) range[1] = ev['xaxis.range[1]'];
+        if (range.length === 2) {
+          syncing = true;
+          window.Plotly.relayout(to, { 'xaxis.range': range }).then(() => { syncing = false; });
+        } else if (ev['xaxis.autorange']) {
+          syncing = true;
+          window.Plotly.relayout(to, { 'xaxis.autorange': true }).then(() => { syncing = false; });
+        }
+      });
+    }
+    relay(a, b); relay(b, a);
   };
 
   // ---------- Envelope vs accumulated travel (two independent interactive plots: X, Y) ----------

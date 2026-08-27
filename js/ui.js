@@ -14,6 +14,68 @@
 
   const $ = (id) => document.getElementById(id);
 
+  function drawBothLayoutPlanes(elements) {
+    SR.render.drawLayout('layoutPlotXZ', elements, 0, 'X');
+    SR.render.drawLayout('layoutPlotYZ', elements, 1, 'Y');
+    SR.render.linkZAxis('layoutPlotXZ', 'layoutPlotYZ');
+  }
+
+  // ---------- Theme (per ALS design spec §7) ----------
+  // localStorage can throw on file:// origins in some browsers (confirmed happening in this
+  // app's own test harness) — the app is explicitly designed to also work opened straight from
+  // disk, so persistence degrades gracefully to "remember for this session only" rather than
+  // taking the whole page down.
+  function safeStorageGet(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function safeStorageSet(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* ignore */ } }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    $('themeToggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+  }
+  function initTheme() {
+    const theme = safeStorageGet('als-theme') || 'light';
+    applyTheme(theme);
+  }
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    safeStorageSet('als-theme', next);
+    applyTheme(next);
+  }
+
+  // ---------- Version badge + history modal ----------
+  function initVersionBadge() {
+    $('versionBadge').textContent = `v${SR.VERSION.current}`;
+    $('versionBadge').title = `v${SR.VERSION.current} (${SR.VERSION.date}) — click for changelog`;
+  }
+  function renderVersionHistory() {
+    const host = $('versionHistoryBody');
+    host.innerHTML = SR.VERSION.history.map((h) => `
+      <div class="version-history-entry">
+        <div class="vh-head"><span class="vh-v">v${h.v}</span><span class="vh-date">${h.date}</span></div>
+        <div class="vh-notes">${h.notes}</div>
+      </div>`).join('');
+  }
+
+  // ---------- Coarse vs fine mode comparison ----------
+  function modeComparisonHTML() {
+    return `
+      <h4>coarse vs fine — what actually changes</h4>
+      <table>
+        <tr><th></th><th>coarse</th><th>fine</th></tr>
+        <tr><td>Search</td><td>grid only</td><td>grid, then refined with differential evolution</td></tr>
+        <tr><td>Grid resolution per mirror DOF</td><td>3 × 3 × 3 × 3 × 3 × 3 = 729 combinations</td><td>x/pitch: 11 pts; y/z/roll/yaw: 3 pts → 11×3×3×11×3×3 = 9,801 combinations</td></tr>
+        <tr><td>DE refinement</td><td>—</td><td>population 60, up to 25 generations, up to 25 outer iterations (stops after 2 consecutive small changes)</td></tr>
+        <tr><td>Ray count formula</td><td>§6 formula ÷ 5, capped at 100,000</td><td>§6 formula as-is, capped at 500,000</td></tr>
+        <tr><td>Typical runtime</td><td>fast — good for quick iteration</td><td>much slower, especially with several mirrors that have real motion ranges</td></tr>
+        <tr><td>Result</td><td>a lower bound on the true envelope</td><td>closer to the true fully-explored envelope, but not guaranteed exact (DE is stochastic)</td></tr>
+      </table>
+      <div class="note">Both modes use the exact same §8 reflection physics — this only changes how thoroughly the
+      mirror motion/misalignment space gets searched. For a mirror with all motion ranges pinned to zero (no
+      real DOF to search), coarse and fine give the same answer.</div>
+    `;
+  }
+
   function log(msg) {
     state.logLines.push(msg);
     const el = $('debugLog');
@@ -62,7 +124,7 @@
   function refreshLayoutPreview() {
     try {
       const elements = SR.bl.resolveBeamline(state.beamline.components, log);
-      SR.render.drawLayout('layoutPlot', elements);
+      drawBothLayoutPlanes(elements);
     } catch (e) {
       log('ERROR resolving beamline: ' + e.message);
     }
@@ -172,7 +234,7 @@
 
   function renderResult() {
     const { stages, elements } = state.result;
-    SR.render.drawLayout('layoutPlot', elements);
+    drawBothLayoutPlanes(elements);
 
     const displayStages = state.showIntermediate ? SR.rt.expandWithIntermediates(stages, 250) : stages;
 
@@ -390,9 +452,36 @@ hand-derived values and pins both of the fixes above with regression tests.
 
   // ---------- Init ----------
   function init() {
+    initTheme();
+    initVersionBadge();
     wireDebugTabs();
     fillAbout();
     wireFileLoad();
+
+    $('themeToggle').addEventListener('click', toggleTheme);
+
+    $('versionBadge').addEventListener('click', () => {
+      renderVersionHistory();
+      $('versionModalBackdrop').style.display = 'flex';
+    });
+    $('versionModalClose').addEventListener('click', () => { $('versionModalBackdrop').style.display = 'none'; });
+    $('versionModalBackdrop').addEventListener('click', (ev) => { if (ev.target.id === 'versionModalBackdrop') $('versionModalBackdrop').style.display = 'none'; });
+
+    const modeInfoPopover = $('modeInfoPopover');
+    $('modeInfoBtn').addEventListener('click', (ev) => {
+      ev.preventDefault();
+      if (modeInfoPopover.style.display === 'block') { modeInfoPopover.style.display = 'none'; return; }
+      modeInfoPopover.innerHTML = modeComparisonHTML();
+      const rect = $('modeInfoBtn').getBoundingClientRect();
+      modeInfoPopover.style.top = `${rect.bottom + 8}px`;
+      modeInfoPopover.style.left = `${Math.max(8, rect.left - 200)}px`;
+      modeInfoPopover.style.display = 'block';
+    });
+    document.addEventListener('click', (ev) => {
+      if (modeInfoPopover.style.display === 'block' && !modeInfoPopover.contains(ev.target) && ev.target.id !== 'modeInfoBtn') {
+        modeInfoPopover.style.display = 'none';
+      }
+    });
 
     $('exampleSelect').addEventListener('change', (ev) => {
       const key = ev.target.value;
