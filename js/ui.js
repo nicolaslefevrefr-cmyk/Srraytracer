@@ -74,6 +74,15 @@
     }, { applyMotions: state.applyMotions, locationDefaults: state.locationDefaults });
   }
 
+  function readCurrentConfig() {
+    return {
+      mode: $('modeSelect').value,
+      linear_accuracy: parseFloat($('linearAccuracy').value),
+      angular_accuracy: parseFloat($('angularAccuracy').value),
+      perf_max_rays: parseInt($('perfCap').value, 10) || undefined,
+    };
+  }
+
   // ---------- Run ----------
   // Runs synchronously (no Web Worker — see the About tab), which blocks the main thread for the
   // duration of the raytrace. We flip the button into a "Running…" state and defer the actual
@@ -88,12 +97,7 @@
     btn.textContent = 'Running…';
     setDebugSummary('running…');
     requestAnimationFrame(() => setTimeout(() => {
-      const config = {
-        mode: $('modeSelect').value,
-        linear_accuracy: parseFloat($('linearAccuracy').value),
-        angular_accuracy: parseFloat($('angularAccuracy').value),
-        perf_max_rays: parseInt($('perfCap').value, 10) || undefined,
-      };
+      const config = readCurrentConfig();
       log(`Running raytrace: mode=${config.mode}, linear_accuracy=${config.linear_accuracy}mm, angular_accuracy=${config.angular_accuracy}rad, perf cap=${config.perf_max_rays}, apply motions & misalignments=${state.applyMotions}`);
       const t0 = performance.now();
       try {
@@ -298,7 +302,16 @@ hand-derived values and pins both of the fixes above with regression tests.
   // ---------- Load / Save JSON ----------
   function saveJSON() {
     if (!state.beamline) { alert('Nothing loaded yet.'); return; }
+    // Sync `config` from the live UI controls, not the possibly-stale value captured at load
+    // time — this is exactly what runRaytrace() actually uses, so what gets saved always
+    // matches what running "now" would compute (this was a real bug: mode/accuracy changes made
+    // after loading a beamline never used to make it into the saved file). perf_max_rays is a
+    // browser-safety-only setting (see raysample.js) and intentionally NOT saved, so a beamline
+    // shared with someone else doesn't silently cap their run too.
+    const liveConfig = readCurrentConfig();
+    delete liveConfig.perf_max_rays;
     const toSave = Object.assign({}, state.beamline, {
+      config: liveConfig,
       apply_motions_misalignments: state.applyMotions,
       location_misalignment_defaults: state.locationDefaults,
     });

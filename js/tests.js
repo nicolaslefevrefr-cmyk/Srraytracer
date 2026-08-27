@@ -207,6 +207,29 @@
       }
     })();
 
+    // --- §18: a symmetric motion search over a symmetric beam must give a symmetric envelope.
+    // Pins the investigation into the reported "sign flip" — every transform involved (shear,
+    // buildRnom's rotation, the reflection law) is linear, so x_motion=+5 must mirror x_motion=-5
+    // for the same ray, and unioning over the full symmetric range can't introduce a net bias. ---
+    (function () {
+      try {
+        const ex = SR.examples.single_mirror;
+        const config = Object.assign({}, ex.config, { mode: 'coarse' });
+        const out = SR.rt.run(ex, config, null);
+        const after = out.stages.find((s) => s.element === 'M1' && s.stage === 'After');
+        const [xmn, xmx] = geo.posBounds(after.phase_space_good.poly_x);
+        const center = (xmn + xmx) / 2;
+        const halfWidth = (xmx - xmn) / 2;
+        approx(center, 0, 0.5, `§18: symmetric motion search gives a centered X envelope (got center=${center.toFixed(3)}, half-width=${halfWidth.toFixed(3)})`);
+        if (after.phase_space_over) {
+          const [omn, omx] = geo.posBounds(after.phase_space_over.poly_x);
+          assert(omn < 0 && omx > 0, `§18: spillover appears on both sides for a symmetric setup (got [${omn.toFixed(2)}, ${omx.toFixed(2)}])`);
+        }
+      } catch (e) {
+        assert(false, `§18: single_mirror symmetric-envelope check threw: ${e.message}`);
+      }
+    })();
+
     return results;
   }
 

@@ -206,7 +206,57 @@ couple when both azimuth and pitch are simultaneously significant. Not resolved 
   3000, adjustable in the header as "max rays") is applied after §6's own clamp. It only ever
   reduces the ray count below what §6 would give, and every time it actually triggers, a `WARNING`
   line is written to the Evaluation log — it never silently changes behavior.
-- **No Three.js 3D viewer / STL / CSV export (§13)**: replaced with three dependency-free 2D
-  canvas views (top-down layout, envelope-vs-travel, per-stage phase space). §2's world-coordinate
-  chain is still fully implemented (it's what draws the layout view and would feed a 3D viewer),
-  just not rendered in 3D in this pass.
+- **No Three.js 3D viewer / STL export (§13)**: replaced with interactive Plotly.js 2D views
+  (top-down layout, envelope-vs-travel, per-stage phase space — see the render.js rewrite noted
+  below). §2's world-coordinate chain is still fully implemented (it's what draws the layout view
+  and would feed a 3D viewer), just not rendered in 3D in this pass.
+- **Plotly.js for charts** (added after the initial canvas-based version): the person asked for
+  real zoom/pan/hover interactivity, which plain `<canvas>` drawing can't give without
+  reimplementing a chart library by hand. This is the one genuine external runtime dependency in
+  the project (loaded from CDN in `index.html`) — everything else still works fully offline.
+
+## §18: a real bug found (Save JSON not reflecting mode/accuracy changes), and a non-bug clarified
+
+The person compared a `single_mirror` run — with real (nonzero) motion ranges this time, not the
+zero-motion case §16/§17 used — against their Python reference, and noticed what looked like a
+sign-flipped X envelope after the mirror, plus one-sided spillover in the reference vs two-sided
+in this port.
+
+**Real bug, fixed:** `state.beamline.config` was only ever written when a beamline was *loaded*;
+changing the mode/accuracy dropdowns afterward updated what `Run raytrace` actually used (that
+part was always correct — `runRaytrace()` reads the live DOM controls directly) but never made it
+into what **Save JSON** exported. Loading an example with `config.mode: "coarse"`, switching the
+dropdown to `fine`, running, then saving would silently save `"coarse"` — exactly what happened
+here. Fixed by having `saveJSON()` read the same live controls `runRaytrace()` does
+(`readCurrentConfig()`, now shared by both) rather than the stale value captured at load time.
+`perf_max_rays` is deliberately excluded from the saved file — it's a browser-safety setting (see
+the engineering-deviations note above), not a beamline property, so sharing a saved file doesn't
+silently cap someone else's run too.
+
+**Not a bug (best current understanding):** with this fixed, the *actual* run always did use
+whatever mode was selected — so the sign-flip/spillover-sidedness question is separate from the
+save bug. This mirror's motion ranges (`x_motion` ±5mm, `pitch` ±0.005rad) are symmetric around
+zero, and the incoming beam (`Before M1`) is symmetric too, so the fully-explored envelope after
+the mirror — and its spillover — **must** come out symmetric: every operation involved (shear,
+the rotation in `buildRnom`, the reflection law) is linear, so reflecting with `x_motion=+5`
+produces the exact mirror image of reflecting with `x_motion=-5` for the same incoming ray, and
+unioning over the full symmetric range can't produce a net bias. Re-running this exact config
+after the fix, repeatedly, in both `coarse` and `fine` mode, reproducibly gives a centered result
+(center within ~0.04mm of zero, both directions) with spillover on both sides — consistent with
+that requirement. The asymmetric, mirror-image-of-each-other results the person saw from both this
+port and their Python reference look like an artifact of incomplete/biased search exploration in
+whichever optimizer ran (`fine` mode's DE is stochastic; even a search that's supposed to be
+symmetric can converge to a lopsided subset of the true envelope) rather than a sign error in the
+reflection physics — which is separately validated exactly by the zero-motion case in §16/§17,
+where there's no search/optimizer involved to introduce this kind of bias.
+
+**Left open:** the specific magnitude the person reported from their run of this port
+(~±6.3mm) could not be reproduced in this environment even with an identical (verified
+byte-for-byte identical to the shipped build) config — every variation tried here (`coarse`,
+`fine`, with/without the ray-count cap, five repeated runs) instead reproducibly gives ~±11.3mm.
+Given `fine` mode's search always starts from (and can only add to) the same grid `coarse` mode
+uses, and `coarse` mode alone already reaches ~±11.3mm here, a smaller result from a correctly
+running current build seems structurally unlikely. If the discrepancy persists after a hard
+refresh / re-downloading the zip, that would be worth another look with the exact steps that
+produced it.
+
