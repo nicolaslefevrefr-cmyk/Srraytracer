@@ -15,8 +15,8 @@
   const $ = (id) => document.getElementById(id);
 
   function drawBothLayoutPlanes(elements) {
-    SR.render.drawLayout('layoutPlotXZ', elements, 0, 'X');
-    SR.render.drawLayout('layoutPlotYZ', elements, 1, 'Y');
+    SR.render.drawLayout('layoutPlotXZ', elements, 0, 'R');
+    SR.render.drawLayout('layoutPlotYZ', elements, 1, 'S');
     SR.render.linkZAxis('layoutPlotXZ', 'layoutPlotYZ');
   }
 
@@ -270,8 +270,8 @@
     });
 
     $('selectedStageLabel').textContent = `— ${current.label}`;
-    SR.render.drawPhaseSpace('phaseXPlot', current.phase_space.poly_x, 'rgba(63,122,224,0.18)', '#3f7ae0', current.phase_space_over ? current.phase_space_over.poly_x : null);
-    SR.render.drawPhaseSpace('phaseYPlot', current.phase_space.poly_y, 'rgba(63,174,92,0.18)', '#3fae5c', current.phase_space_over ? current.phase_space_over.poly_y : null);
+    SR.render.drawPhaseSpace('phaseXPlot', current.phase_space.poly_x, 'rgba(63,122,224,0.18)', '#3f7ae0', current.phase_space_over ? current.phase_space_over.poly_x : null, 'R');
+    SR.render.drawPhaseSpace('phaseYPlot', current.phase_space.poly_y, 'rgba(63,174,92,0.18)', '#3fae5c', current.phase_space_over ? current.phase_space_over.poly_y : null, 'S');
   }
 
   // ---------- Debug tabs ----------

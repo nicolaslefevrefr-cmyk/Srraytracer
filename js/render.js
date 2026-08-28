@@ -1,53 +1,70 @@
 // render.js — Plotly.js-based visualizations (replaces the earlier plain-canvas renderer).
 // Loaded from CDN in index.html. All plots get native drag-to-zoom, scroll-to-zoom, pan, and
 // hover tooltips for free; annotations are used for component-name callouts on the envelope plot.
+//
+// Axis naming: the app's internal data model and JSON schema keep the spec's own X/Y/Z field
+// names (size_x_min, poly_x, etc. — unchanged, since that's the ported spec's contract) but every
+// user-facing label in these charts uses R (horizontal transverse), S (vertical transverse), T
+// (beam-propagation / accumulated travel) instead, per the person's request.
 (function (SR) {
   'use strict';
   const geo = SR.geo;
   const render = {};
 
-  const FONT = { family: '"IBM Plex Mono", monospace', size: 11, color: '#22303c' };
+  const FONT = { family: '"DM Sans", sans-serif', size: 11, color: '#22303c' };
   const PLOTLY_CONFIG = {
     responsive: true, displaylogo: false, scrollZoom: true,
     modeBarButtonsToRemove: ['lasso2d', 'select2d'],
   };
+  // Fixed high-contrast hover styling (dark bg, light text) regardless of the page's own
+  // light/dark theme, so it's always legible — this fixes a real bug where an earlier version
+  // set the hover label's text color equal to its background color, making tooltips unreadable.
+  // Spike lines are enabled so the cursor's exact R/S/T position is traceable against both axes,
+  // not just readable from the tooltip.
   const BASE_LAYOUT = () => ({
     font: FONT, margin: { l: 52, r: 16, t: 10, b: 40 },
     plot_bgcolor: '#fdfefe', paper_bgcolor: 'rgba(0,0,0,0)',
-    hoverlabel: { font: FONT, bgcolor: '#22303c' },
-    xaxis: { gridcolor: '#e7ecf0', zerolinecolor: '#d7dee4', showline: true, linecolor: '#d7dee4' },
-    yaxis: { gridcolor: '#e7ecf0', zerolinecolor: '#d7dee4', showline: true, linecolor: '#d7dee4' },
+    hovermode: 'closest',
+    hoverlabel: { font: { family: FONT.family, size: 11, color: '#f4f6f9' }, bgcolor: '#1c2430', bordercolor: '#e8a020' },
+    xaxis: {
+      gridcolor: '#e7ecf0', zerolinecolor: '#d7dee4', showline: true, linecolor: '#d7dee4',
+      showspikes: true, spikemode: 'across', spikedash: 'dot', spikecolor: '#94a3ad', spikethickness: 1,
+    },
+    yaxis: {
+      gridcolor: '#e7ecf0', zerolinecolor: '#d7dee4', showline: true, linecolor: '#d7dee4',
+      showspikes: true, spikemode: 'across', spikedash: 'dot', spikecolor: '#94a3ad', spikethickness: 1,
+    },
   });
 
   function ensurePlotly() {
     if (!window.Plotly) throw new Error('Plotly.js failed to load (needs internet access — see README). Charts cannot render.');
   }
 
-  // ---------- Beamline layout (top-down, X vs Z) ----------
-  // `axisIndex`: 0 for X-Z (top-down), 1 for Y-Z (side view).
+  // ---------- Beamline layout (R-T top-down / S-T side view) ----------
+  // `axisIndex`: 0 for R-T (top-down, world X), 1 for S-T (side view, world Y).
   render.drawLayout = function (divId, elements, axisIndex, axisLabel) {
     ensurePlotly();
     const el = document.getElementById(divId);
     if (!elements || elements.length === 0) { window.Plotly.purge(el); return; }
 
-    const zs = elements.map((e) => e.position[2]);
-    const ys = elements.map((e) => e.position[axisIndex]);
+    const ts = elements.map((e) => e.position[2]);
+    const vs = elements.map((e) => e.position[axisIndex]);
     const colors = elements.map((e) => (e.type === 'Source' ? '#e07a3f' : e.type === 'Mirror' ? '#3f7ae0' : '#3fae5c'));
     const sizes = elements.map((e) => (e.type === 'Source' ? 11 : 9));
     const names = elements.map((e) => e.name);
-    const label = axisLabel || (axisIndex === 0 ? 'X' : 'Y');
+    const label = axisLabel || (axisIndex === 0 ? 'R' : 'S');
 
     const trace = {
       type: 'scatter', mode: 'lines+markers+text',
-      x: zs, y: ys, text: names, textposition: 'top center',
+      x: ts, y: vs, text: names, textposition: 'top center',
       textfont: { family: FONT.family, size: 10, color: '#5a6b78' },
       marker: { color: colors, size: sizes, line: { color: '#fff', width: 1 } },
       line: { color: '#a9bcca', width: 1.6 },
-      hovertemplate: `%{text}<br>Z=%{x:.2f} mm<br>${label}=%{y:.2f} mm<extra></extra>`,
+      hovertemplate: `%{text}<br>T=%{x:.2f} mm<br>${label}=%{y:.2f} mm<extra></extra>`,
     };
 
     const layout = Object.assign(BASE_LAYOUT(), {
-      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'Z (mm)', font: FONT } }),
+      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'T (mm)', font: FONT } }),
       yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: `${label} (mm)`, font: FONT } }),
       showlegend: false,
     });
@@ -55,7 +72,7 @@
     window.Plotly.react(el, [trace], layout, PLOTLY_CONFIG);
   };
 
-  // Keeps two plots' Z (x-)axis ranges in sync (e.g. the X-Z and Y-Z layout views): panning or
+  // Keeps two plots' T (x-)axis ranges in sync (the R-T and S-T layout views): panning or
   // zooming either one applies the same x-range to the other. Guards against feedback loops with
   // a simple re-entrancy flag. Safe to call every render — only attaches its listeners once per
   // element.
@@ -83,7 +100,7 @@
     relay(a, b); relay(b, a);
   };
 
-  // ---------- Envelope vs accumulated travel (two independent interactive plots: X, Y) ----------
+  // ---------- Envelope vs accumulated travel (two independent interactive plots: R, S) ----------
   // Shears a phase space's position bounds forward by `dt` (exact — shear is linear).
   function shearedBounds(poly, dt) {
     if (!poly || poly.length === 0) return null;
@@ -91,11 +108,11 @@
     return geo.posBounds(sheared);
   }
 
-  function xExtract(phaseSpace) {
+  function rExtract(phaseSpace) {
     const poly = phaseSpace && phaseSpace.poly_x;
     return poly && poly.length ? geo.posBounds(poly) : null;
   }
-  function yExtract(phaseSpace) {
+  function sExtract(phaseSpace) {
     const poly = phaseSpace && phaseSpace.poly_y;
     return poly && poly.length ? geo.posBounds(poly) : null;
   }
@@ -118,7 +135,8 @@
   }
 
   // extractFn(phaseSpace) -> [min,max] | null. `whichAxis` selects poly_x/poly_y for spillover.
-  function buildEnvelopeFigure(stages, extractFn, whichAxis, color, opts) {
+  // `axisLetter` ('R' or 'S') is baked into hover text so the cursor's value is unambiguous.
+  function buildEnvelopeFigure(stages, extractFn, whichAxis, axisLetter, color, opts) {
     const travels = stages.map((s) => s.accumulated_travel);
     const maxVals = [], minVals = [];
     stages.forEach((s) => {
@@ -157,13 +175,13 @@
     traces.push({
       type: 'scatter', mode: 'lines', x: travels, y: maxVals,
       line: { color, width: 2 }, name: 'max', showlegend: false,
-      hovertemplate: 'travel %{x:.1f} mm<br>max %{y:.4f} mm<extra></extra>',
+      hovertemplate: `T=%{x:.1f} mm<br>${axisLetter}(max)=%{y:.4f} mm<extra></extra>`,
     });
     traces.push({
       type: 'scatter', mode: 'lines', x: travels, y: minVals,
       line: { color, width: 1.4 }, fill: 'tonexty', fillcolor: hexToRgba(color, 0.10),
       name: 'min', showlegend: false,
-      hovertemplate: 'travel %{x:.1f} mm<br>min %{y:.4f} mm<extra></extra>',
+      hovertemplate: `T=%{x:.1f} mm<br>${axisLetter}(min)=%{y:.4f} mm<extra></extra>`,
     });
 
     // Markers at each real stage, colored to distinguish mirrors from everything else.
@@ -173,14 +191,14 @@
         type: 'scatter', mode: 'markers', x: travels, y: which === 'max' ? maxVals : minVals,
         marker: { color: markerColors, size: 5 }, showlegend: false,
         customdata: stages.map((s) => `${s.element} / ${s.stage}`),
-        hovertemplate: '%{customdata}<br>travel %{x:.1f} mm<br>%{y:.4f} mm<extra></extra>',
+        hovertemplate: `%{customdata}<br>T=%{x:.1f} mm<br>${axisLetter}=%{y:.4f} mm<extra></extra>`,
       });
     });
 
     const layout = Object.assign(BASE_LAYOUT(), {
       margin: { l: 52, r: 16, t: 46, b: 40 },
-      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'accumulated travel (mm)', font: FONT } }),
-      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: (opts && opts.axisLabel) || 'position (mm)', font: FONT } }),
+      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'T — accumulated travel (mm)', font: FONT } }),
+      yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: (opts && opts.axisLabel) || `${axisLetter} (mm)`, font: FONT } }),
       annotations: buildElementAnnotations(stages),
       shapes: (opts && opts.selectedTravel != null) ? [{
         type: 'line', xref: 'x', yref: 'paper', x0: opts.selectedTravel, x1: opts.selectedTravel, y0: 0, y1: 1,
@@ -199,18 +217,18 @@
     return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  render.drawEnvelopePlots = function (xDivId, yDivId, stages, opts, onClick) {
+  render.drawEnvelopePlots = function (rDivId, sDivId, stages, opts, onClick) {
     ensurePlotly();
     if (!stages || stages.length === 0) return;
-    const xEl = document.getElementById(xDivId), yEl = document.getElementById(yDivId);
+    const rEl = document.getElementById(rDivId), sEl = document.getElementById(sDivId);
 
-    const figX = buildEnvelopeFigure(stages, xExtract, 'x', '#3f7ae0', Object.assign({ axisLabel: 'X (mm)' }, opts));
-    const figY = buildEnvelopeFigure(stages, yExtract, 'y', '#3fae5c', Object.assign({ axisLabel: 'Y (mm)' }, opts));
+    const figR = buildEnvelopeFigure(stages, rExtract, 'x', 'R', '#3f7ae0', Object.assign({ axisLabel: 'R (mm)' }, opts));
+    const figS = buildEnvelopeFigure(stages, sExtract, 'y', 'S', '#3fae5c', Object.assign({ axisLabel: 'S (mm)' }, opts));
 
-    window.Plotly.react(xEl, figX.traces, figX.layout, PLOTLY_CONFIG);
-    window.Plotly.react(yEl, figY.traces, figY.layout, PLOTLY_CONFIG);
+    window.Plotly.react(rEl, figR.traces, figR.layout, PLOTLY_CONFIG);
+    window.Plotly.react(sEl, figS.traces, figS.layout, PLOTLY_CONFIG);
 
-    if (onClick) { wireTravelClick(xEl, onClick); wireTravelClick(yEl, onClick); }
+    if (onClick) { wireTravelClick(rEl, onClick); wireTravelClick(sEl, onClick); }
   };
 
   // Reads the click position directly against Plotly's current x-axis range (rather than relying
@@ -235,15 +253,17 @@
   }
 
   // ---------- Single phase-space polygon (position mm vs slope mrad), with grid + axis units ----------
-  // `overPoly` (optional): the spillover polygon for the same stage, drawn as a second, amber trace.
-  render.drawPhaseSpace = function (divId, poly, colorFill, colorStroke, overPoly) {
+  // `axisLetter` ('R' or 'S') labels the position axis in the hover text. `overPoly` (optional):
+  // the spillover polygon for the same stage, drawn as a second, amber trace.
+  render.drawPhaseSpace = function (divId, poly, colorFill, colorStroke, overPoly, axisLetter) {
     ensurePlotly();
     const el = document.getElementById(divId);
+    const letter = axisLetter || 'R';
     if ((!poly || poly.length === 0) && (!overPoly || overPoly.length === 0)) {
       window.Plotly.react(el, [], Object.assign(BASE_LAYOUT(), {
         annotations: [{ text: '(empty)', xref: 'paper', yref: 'paper', x: 0.5, y: 0.5, showarrow: false, font: { family: FONT.family, size: 12, color: '#94a3ad' } }],
-        xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'position (mm)', font: FONT } }),
-        yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: 'slope (mrad)', font: FONT } }),
+        xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: `${letter} (mm)`, font: FONT } }),
+        yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: `slope (mrad)`, font: FONT } }),
       }), PLOTLY_CONFIG);
       return;
     }
@@ -255,14 +275,14 @@
         type: 'scatter', mode: 'lines+markers', x: xs, y: ys, name,
         fill: p.length > 2 ? 'toself' : 'none', fillcolor: fill,
         line: { color: stroke, width: 1.6 }, marker: { color: stroke, size: 4 },
-        hovertemplate: `${name}<br>pos %{x:.4f} mm<br>slope %{y:.4f} mrad<extra></extra>`,
+        hovertemplate: `${name}<br>${letter}=%{x:.4f} mm<br>slope=%{y:.4f} mrad<extra></extra>`,
       };
     }
     if (poly && poly.length) traces.push(polyTrace(poly, colorFill || 'rgba(63,122,224,0.18)', colorStroke || '#3f7ae0', 'good'));
     if (overPoly && overPoly.length) traces.push(polyTrace(overPoly, 'rgba(224,178,63,0.20)', '#e0b23f', 'spillover'));
 
     const layout = Object.assign(BASE_LAYOUT(), {
-      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: 'position (mm)', font: FONT } }),
+      xaxis: Object.assign({}, BASE_LAYOUT().xaxis, { title: { text: `${letter} (mm)`, font: FONT } }),
       yaxis: Object.assign({}, BASE_LAYOUT().yaxis, { title: { text: 'slope (mrad)', font: FONT } }),
       showlegend: !!(overPoly && overPoly.length),
       legend: { font: { family: FONT.family, size: 9.5 }, orientation: 'h', y: 1.08 },

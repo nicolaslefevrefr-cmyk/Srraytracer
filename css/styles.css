@@ -242,12 +242,11 @@ code { font-family: ui-monospace, "SF Mono", monospace; }
 canvas { width: 100%; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); }
 
 .plotly-host { width: 100%; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg); }
-.plotly-host-sm { height: 220px; }
+.plotly-host-sm { height: 200px; }
 .plotly-host-md { height: 240px; }
 .plotly-host-lg { height: 260px; }
 
-.layout-plot-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-@media (max-width: 700px) { .layout-plot-pair { grid-template-columns: 1fr; } }
+.layout-plot-pair { display: grid; grid-template-columns: 1fr; gap: 10px; }
 
 .stage-table-wrap { max-height: 260px; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: 8px; }
 .stage-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }

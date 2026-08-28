@@ -6,9 +6,20 @@
   'use strict';
 
   SR.VERSION = {
-    current: '1.2.0',
+    current: '1.3.0',
     date: '2026-08-28',
     history: [
+      {
+        v: '1.3.0', date: '2026-08-28',
+        notes: 'Layout views (R-T/S-T) now stacked vertically instead of side by side. X/Y/Z '
+          + 'relabeled to R/S/T across every user-facing chart, table, and tooltip (internal JSON '
+          + 'field names unchanged). Fixed a real bug: hover tooltip text color was accidentally '
+          + 'identical to its background, making every tooltip unreadable — now a fixed high-'
+          + 'contrast style plus cursor-tracking spike lines on both axes. Confirmed (with two '
+          + "numeric demonstrations) that a mirror's finite length correctly captures the "
+          + 'divergence-vs-path-length effect near its edges — this falls out of exact per-ray '
+          + 'geometric intersection, not something needing special-case handling.',
+      },
       {
         v: '1.2.0', date: '2026-08-28',
         notes: 'ALS Engineering Tools design system applied (Syne/DM Sans fonts, light/dark theme '

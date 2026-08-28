@@ -121,14 +121,14 @@
 
 <main class="layout">
   <section class="panel panel-left">
-    <div class="panel-head">Beamline layout <span class="hint">scroll to zoom, drag to pan &mdash; X-Z and Y-Z share the same Z axis and stay in sync</span></div>
+    <div class="panel-head">Beamline layout <span class="hint">scroll to zoom, drag to pan &mdash; R-T and S-T share the same T axis and stay in sync</span></div>
     <div class="layout-plot-pair">
       <div>
-        <div class="phase-label">X-Z (top-down)</div>
+        <div class="phase-label">R-T (top-down)</div>
         <div id="layoutPlotXZ" class="plotly-host plotly-host-sm"></div>
       </div>
       <div>
-        <div class="phase-label">Y-Z (side view)</div>
+        <div class="phase-label">S-T (side view)</div>
         <div id="layoutPlotYZ" class="plotly-host plotly-host-sm"></div>
       </div>
     </div>
@@ -138,25 +138,25 @@
     </div>
     <div class="stage-table-wrap">
       <table class="stage-table" id="stageTable">
-        <thead><tr><th>#</th><th>element</th><th>stage</th><th>travel (mm)</th><th>min X</th><th>max X</th><th>min Y</th><th>max Y</th><th>area X</th><th>area Y</th></tr></thead>
+        <thead><tr><th>#</th><th>element</th><th>stage</th><th>T (mm)</th><th>min R</th><th>max R</th><th>min S</th><th>max S</th><th>area R</th><th>area S</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
   </section>
 
   <section class="panel panel-right">
-    <div class="panel-head">Envelope vs. accumulated travel <span class="hint">click to inspect that Z · drag to zoom, scroll to pan · <span style="color:#3f7ae0">blue/green</span> = good rays · <span style="color:#e0b23f">amber</span> = spillover (shown up to 2500mm downstream)</span></div>
+    <div class="panel-head">Envelope (R, S) vs. accumulated travel (T) <span class="hint">click to inspect that T · drag to zoom, scroll to pan · <span style="color:#3f7ae0">blue/green</span> = good rays · <span style="color:#e0b23f">amber</span> = spillover (shown up to 2500mm downstream)</span></div>
     <div id="envelopeXPlot" class="plotly-host plotly-host-lg"></div>
     <div id="envelopeYPlot" class="plotly-host plotly-host-lg"></div>
 
     <div class="panel-head">Selected stage phase space <span class="hint" id="selectedStageLabel"></span></div>
     <div class="phase-pair">
       <div>
-        <div class="phase-label">poly_x (position mm vs slope mrad)</div>
+        <div class="phase-label">poly_r — R (position mm vs slope mrad)</div>
         <div id="phaseXPlot" class="plotly-host plotly-host-md"></div>
       </div>
       <div>
-        <div class="phase-label">poly_y (position mm vs slope mrad)</div>
+        <div class="phase-label">poly_s — S (position mm vs slope mrad)</div>
         <div id="phaseYPlot" class="plotly-host plotly-host-md"></div>
       </div>
     </div>

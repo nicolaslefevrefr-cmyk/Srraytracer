@@ -41,15 +41,16 @@ fetch()-based module loading can't do reliably.
    parameters, ray-count formula) pulled straight from the engine's own constants. Then choose
    **coarse** or **fine**, adjust `linear_accuracy` / `angular_accuracy` if you want, and hit
    **Run raytrace**.
-5. The left panel shows the beamline's interactive layout in both **X-Z** (top-down) and **Y-Z**
-   (side view) — the two share the same Z-axis and stay in sync when you zoom or pan either one
-   (scroll to zoom, drag to pan, hover for exact coordinates — updates live as you edit
+5. The left panel shows the beamline's interactive layout, stacked as **R-T** (top-down) above
+   **S-T** (side view) — the two share the same T-axis and stay in sync when you zoom or pan
+   either one (scroll to zoom, drag to pan, hover for exact coordinates — updates live as you edit
    components, even before running) — and a clickable table of every raytrace stage (Source, then
    Before/After for each element by default; check **show intermediate points** next to the table
    header to also see every 250mm along the way, computed on the fly with no re-run needed),
-   including each stage's min/max X and Y bounds directly in the table for comparing against
-   reference data. The right panel shows envelope size vs. accumulated travel as two interactive
-   Plotly charts (drag to zoom, scroll to zoom, double-click to reset, hover for exact values)
+   including each stage's min/max R and S bounds directly in the table for comparing against
+   reference data. The right panel shows envelope size vs. accumulated travel (T) as two
+   interactive Plotly charts (drag to zoom, scroll to zoom, double-click to reset, hover for exact
+   values — every tooltip and axis label uses R/S/T, not X/Y/Z, matching the beamline views)
    with component names called out via arrows — **click anywhere on either plot to inspect the
    exact phase space at that Z**, computed on the
    fly by shearing analytically from the nearest preceding stage (exact, not interpolated

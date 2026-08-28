@@ -293,3 +293,50 @@ exactly this). Wrapped in `safeStorageGet`/`safeStorageSet` so a failure there d
 "theme choice isn't remembered between visits" instead of taking down the whole page — consistent
 with the app's stated goal of working when opened directly from disk.
 
+## §20: R/S/T axis labels, stacked layout views, and a real hover-tooltip bug
+
+Three follow-up UI requests:
+
+- **Layout views stacked, not side by side** — the R-T and S-T beamline layout views (added in
+  §19) are now stacked vertically instead of side by side (`layout-plot-pair`'s CSS grid switched
+  from two columns to one).
+- **X/Y/Z relabeled to R/S/T everywhere user-facing** — chart axis titles, the stage table's
+  column headers, phase-space panel labels, and hover text all now say R (horizontal transverse),
+  S (vertical transverse), T (beam-propagation / accumulated travel) instead of X/Y/Z. This is
+  purely a display change: the internal data model and JSON schema keep the spec's own field names
+  (`poly_x`, `size_x_min`, etc.) unchanged, since those are the ported spec's contract, not
+  something to rename.
+- **A real bug found and fixed**: chart hover tooltips were unreadable — `BASE_LAYOUT`'s
+  `hoverlabel.font.color` was accidentally set equal to `hoverlabel.bgcolor` (both `#22303c`),
+  making every tooltip's text invisible against its own background. Fixed with a fixed
+  high-contrast combination (dark background, light text) that stays legible in both the light and
+  dark theme regardless of the page's own colors. Also added spike lines (dotted crosshairs
+  following the cursor on both axes) so the R/S/T position under the pointer is traceable even
+  without reading the tooltip text.
+
+## §21: confirmed — the mirror's finite length correctly captures the divergence-vs-length effect
+
+The person asked for direct confirmation that, for a mirror of nonzero length, rays landing near
+the upstream edge (closer to the source) show a smaller centerline offset than rays landing near
+the downstream edge, purely from beam divergence accumulating over the extra path length — e.g.
+for a 500mm mirror, the expected extra spread at the far edge is roughly `500mm × divergence`.
+
+Verified directly with two numeric tests:
+- Reflecting the same `single_mirror` beamline's incoming phase space through the full ±250mm
+  mirror vs. a near-point (±1mm) mirror of the same nominal orientation: the full-length mirror's
+  output S-envelope is measurably wider (49.70mm vs. 45.13mm), because only the longer mirror is
+  physically able to intercept and reflect the more strongly diverging rays that land nearer its
+  edges — the near-point mirror clips them off as spillover before they'd ever reach the real
+  mirror's edges.
+- More directly: reflecting a single ray with a fixed divergence angle (`b=0.002` rad) from five
+  different starting depths (`z = -500, -250, 0, 250, 500`) gives output transverse positions of
+  exactly `1.0, 0.5, 0.0, -0.5, -1.0` mm — i.e. exactly `distance × divergence` in each case, with
+  the sign flipping as expected on either side of the mirror's nominal center.
+
+This isn't a special case handled separately — it falls directly out of doing exact per-ray
+geometric intersection (§8.3's `t = -P.z / D.z`, solved individually for every sampled ray) rather
+than any paraxial or "nominal distance for all rays" approximation. Every ray's own position and
+slope determine exactly where along the mirror's length it lands and how much divergence-driven
+spread it has accumulated by that point — the effect the person described is inherent to the
+algorithm as implemented, not something that needed separate handling.
+
